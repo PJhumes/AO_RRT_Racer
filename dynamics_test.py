@@ -57,8 +57,8 @@ while running:
     if keys[pygame.K_LEFT]:  phi -= .01
     elif keys[pygame.K_RIGHT]: phi += .01
     else:
-        if phi > 0: phi = max(0, phi-0.005)
-        if phi < 0: phi = min(0, phi+0.005)
+        if phi > 0: phi = max(0, phi-0.05)
+        if phi < 0: phi = min(0, phi+0.05)
         
     # Throttle/Brake
     if keys[pygame.K_UP]:
