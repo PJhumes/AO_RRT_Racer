@@ -1,8 +1,19 @@
 
 import numpy as np
+rand = np.random.default_rng()
+
 
 class Formula_E():
-    def __init__(self):
+    class car_state():
+        def __init__(self, x, y, theta):
+            self.x = x
+            self.y = y
+            self.theta = theta
+        
+        def pos(self):
+            return np.array([[self.x, self.y]])
+
+    def __init__(self, x=0, y=0, theta=0):
         ### Vehicle Parameters ###
         # Geometry
         self.L = 2.97 # m
@@ -22,8 +33,8 @@ class Formula_E():
 
         # Powertrain
         self.P_max = 300 * 1000 # W
-        self.F_max = self.mu * self.f_n(0) * self.g
-        self.brake_max = -self.F_max # Assume the brakes are capable of locking tires at any point
+        self.f_max = self.mu * self.f_n(0) * self.g
+        self.brake_max = -self.f_max # Assume the brakes are capable of locking tires at any point
         self.v_cross = self.P/self.F_max
 
         # Aerodynamics
@@ -31,33 +42,41 @@ class Formula_E():
         self.C_L = 0.95
         self.rho = 1.225 # kg/m^3 (sea level)
         self.g = 9.81 # m/s^2
+        print(f"g: {self.g}")
         self.C_rr = 0.015 # Rolling Resistance (optional)
 
         # Initial Conditions:
-        self.pos = (0, 0)
+        self.state = self.car_state(x, y, theta)
         self.phi = 0
-        self.theta = 0
+        self.v = 0
 
     def rand_control(self):
-        c = np.random.random_sample((2, 1)) # FIXME: SCALE THIS
+        phi = rand.uniform(-self.phi_max, self.phi_max)
+        acc = rand.uniform(-self.F_max, self.P_max) 
+        # Min braking power is always traction limited
+        # Full throttle is the max sample, it may be reduced later.
+        return (acc, phi)
 
-    def theta_dot(self, v, phi):
-        theta_dot = v/self.L*np.atan(phi)
+    def theta_dot(self, v, phi): v/self.L*np.atan(phi)
 
-    def update_pos(self, v, phi, theta):
-        self.pos[0] += v*np.cos(theta)
-        self.pos[1] += v*np.sin(theta)
-        theta += self.theta_dot(v, phi)
+    def update_pos(self): # FIXME: Close but not fully right.
+        theta = self.state.theta
+        self.state.x += self.v*np.cos(theta)
+        self.state.y += self.v*np.sin(theta)
+        self.state.theta += self.theta_dot(self.v, self.phi)
+        theta = self.state.theta
 
         r_mat = np.array([[np.cos(theta), -np.sin(theta)],
-                        [np.sin(theta),  np.cos(theta)]])
+                          [np.sin(theta),  np.cos(theta)]])
 
-        car =  [
-                r_mat @ np.array([0,  self.width]) + self.pos, # Rear left
-                r_mat @ np.array([0, -self.width]) + self.pos, # Rear right
-                r_mat @ np.array([2*self.length, -self.width]) + self.pos, # Front left
-                r_mat @ np.array([2*self.length,  self.width]) + self.pos, # Front right
-            ]
+        car_box =  [
+                    r_mat @ np.array([0,  self.width]) + self.pos(), # Rear left
+                    r_mat @ np.array([0, -self.width]) + self.pos(), # Rear right
+                    r_mat @ np.array([2*self.length, -self.width]) + self.pos(), # Front left
+                    r_mat @ np.array([2*self.length,  self.width]) + self.pos(), # Front right
+                   ]
+        
+        return car_box
 
 
     def f_drag(self, v): 1050 * (v/50)**2 # N (From Linkedin AirShaper CFD)
@@ -66,20 +85,25 @@ class Formula_E():
 
     def f_max_grip(self, v): self.mu * self.f_n(v)
 
-    def f_n(self, v): self.m*self.g + self.f_down(v)
+    def f_n(self, v): self.m * self.g + self.f_down(v)
 
-    def f_motor(self, v): 
-        min(self.f_max_grip(v), self.P/v)
+    def f_motor(self, v): min(self.f_max_grip(v), self.P/v)
 
-    def max_turn_allowed(self, v):
+    def scale_control(self, v, acc, phi):
+        f_gas, f_turn = self.calc_forces(v, acc, phi)
+        f_mag = np.sqrt(f_gas**2, f_turn**2)
+        self.f_max = self.f_max_grip(v)
 
-        min()
+        if f_mag < self.max_f:
+            return (acc, phi)
+        else:
+            return (acc/f_mag*self.f_max, np.atan(np.tan(phi)/f_mag*self.f_max)) # FIXME: Check this.
 
-    def friction_circle(self, v, acc, phi):
+    def calc_forces(self, v, acc, phi):
+        f_gas = self.m * acc
 
-        fx = self.m * acc
-        fy = r * theta_dot **2 
+        # atan(phi) = L/R
+        R = self.L/np.tan(phi)
+        f_turn = self.m * v**2 / R
 
-
-        return (fx**2 + fy**2) / (self.mu * self.f_n(v)) ** 2 <= 1
-        
+        return (f_gas, f_turn)

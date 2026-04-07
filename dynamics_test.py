@@ -4,6 +4,7 @@ import pygame
 import shapely.geometry as geom
 from shapely.prepared import prep
 import numpy as np
+import Formula_E
 
 
 def generate_oval_track(center_x, center_y, straight, r, num_points=100):
@@ -35,15 +36,8 @@ prepared_track = prep(track_poly)
 pygame.init()
 screen = pygame.display.set_mode((800, 600))
 clock = pygame.time.Clock()
-pos = np.array([100, 100])
-theta = 0
-phi = 0
-car_v = 0
 
-CAR_W = 10
-CAR_L = 15
-MAX_V = 5
-MAX_PHI = 0.15
+racecar = Formula_E.Formula_E(100, 100, 0)
 
 running = True
 while running:
@@ -54,48 +48,37 @@ while running:
     # Move car with arrow keys
     keys = pygame.key.get_pressed()
     # Turning Motion
-    if keys[pygame.K_LEFT]:  phi -= .01
-    elif keys[pygame.K_RIGHT]: phi += .01
+    if keys[pygame.K_LEFT]:  racecar.phi -= .01
+    elif keys[pygame.K_RIGHT]: racecar.phi += .01
     else:
-        if phi > 0: phi = max(0, phi-0.05)
-        if phi < 0: phi = min(0, phi+0.05)
+        if racecar.phi > 0: racecar.phi = max(0, racecar.phi-0.05)
+        if racecar.phi < 0: racecar.phi = min(0, racecar.phi+0.05)
         
     # Throttle/Brake
     if keys[pygame.K_UP]:
-        car_v = min(MAX_V, car_v+0.1)  
+        racecar.v = min(5, racecar.v+0.1)  
 
     elif keys[pygame.K_DOWN]:  
-        car_v = max(-MAX_V/2, car_v-0.2)
+        racecar.v = max(-5/2, racecar.v-0.2)
 
     else: # Slowly coast to a stop
-        if car_v > 0: car_v = max(0, car_v-0.03)
-        if car_v < 0: car_v = min(0, car_v+0.03)
+        if racecar.v > 0: racecar.v = max(0, racecar.v-0.03)
+        if racecar.v < 0: racecar.v = min(0, racecar.v+0.03)
     
 
-    theta_dot = car_v/CAR_L*np.atan(phi)
-    pos[0] += car_v*np.cos(theta)
-    pos[1] += car_v*np.sin(theta)
-    theta += theta_dot
+    # theta_dot = car_v/CAR_L*np.atan(phi)
+    # pos[0] += car_v*np.cos(theta)
+    # pos[1] += car_v*np.sin(theta)
+    # theta += theta_dot
 
-    
-    
-    r_mat = np.array([[np.cos(theta), -np.sin(theta)],
-                      [np.sin(theta),  np.cos(theta)]])
-
-    car =  [
-            r_mat @ np.array([0,  CAR_W]) + pos, # Rear left
-            r_mat @ np.array([0, -CAR_W]) + pos, # Rear right
-            r_mat @ np.array([2*CAR_L, -CAR_W]) + pos, # Front left
-            r_mat @ np.array([2*CAR_L,  CAR_W]) + pos, # Front right
-           ]
-
+    car_box = racecar.update_pos()
         
     
 
     # --- 3. COLLISION LOGIC ---
     # Create a small square hitbox for the car
     # CAR_Litbox = geom.box(car[0,0], car[0,1], car[1, 0], car[1, 1]) 
-    car_hitbox = geom.polygon.Polygon(car)
+    car_hitbox = geom.polygon.Polygon(car_box)
 
     # Check if the car is entirely WITHIN the track polygon
     is_colliding = not prepared_track.contains(car_hitbox)
