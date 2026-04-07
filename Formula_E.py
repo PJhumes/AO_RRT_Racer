@@ -11,7 +11,7 @@ class Formula_E():
             self.theta = theta
         
         def pos(self):
-            return np.array([[self.x, self.y]])
+            return np.array([self.x, self.y])
 
     def __init__(self, x=0, y=0, theta=0):
         ### Vehicle Parameters ###
@@ -31,19 +31,18 @@ class Formula_E():
         self.m = 840 # kg (including driver)
         self.h = 0.3 # m  (C.o.G. height)
 
-        # Powertrain
-        self.P_max = 300 * 1000 # W
-        self.f_max = self.mu * self.f_n(0) * self.g
-        self.brake_max = -self.f_max # Assume the brakes are capable of locking tires at any point
-        self.v_cross = self.P/self.F_max
-
         # Aerodynamics
         self.C_D = 0.95
         self.C_L = 0.95
         self.rho = 1.225 # kg/m^3 (sea level)
         self.g = 9.81 # m/s^2
-        print(f"g: {self.g}")
         self.C_rr = 0.015 # Rolling Resistance (optional)
+
+        # Powertrain
+        self.P_max = 300 * 1000 # W
+        self.f_max = self.mu * self.f_n(0) * self.g
+        self.brake_max = -self.f_max # Assume the brakes are capable of locking tires at any point
+        self.v_cross = self.P_max/self.f_max
 
         # Initial Conditions:
         self.state = self.car_state(x, y, theta)
@@ -57,7 +56,7 @@ class Formula_E():
         # Full throttle is the max sample, it may be reduced later.
         return (acc, phi)
 
-    def theta_dot(self, v, phi): v/self.L*np.atan(phi)
+    def theta_dot(self, v, phi): return v/self.L*np.atan(phi)
 
     def update_pos(self): # FIXME: Close but not fully right.
         theta = self.state.theta
@@ -70,24 +69,24 @@ class Formula_E():
                           [np.sin(theta),  np.cos(theta)]])
 
         car_box =  [
-                    r_mat @ np.array([0,  self.width]) + self.pos(), # Rear left
-                    r_mat @ np.array([0, -self.width]) + self.pos(), # Rear right
-                    r_mat @ np.array([2*self.length, -self.width]) + self.pos(), # Front left
-                    r_mat @ np.array([2*self.length,  self.width]) + self.pos(), # Front right
+                    r_mat @ np.array([0,  self.width]) + self.state.pos(), # Rear left
+                    r_mat @ np.array([0, -self.width]) + self.state.pos(), # Rear right
+                    r_mat @ np.array([2*self.length, -self.width]) + self.state.pos(), # Front left
+                    r_mat @ np.array([2*self.length,  self.width]) + self.state.pos(), # Front right
                    ]
         
         return car_box
 
 
-    def f_drag(self, v): 1050 * (v/50)**2 # N (From Linkedin AirShaper CFD)
+    def f_drag(self, v): return 1050 * (v/50)**2 # N (From Linkedin AirShaper CFD)
 
-    def f_down(self, v): 1030 * (v/50)**2 # N (From Linkedin AirShaper CFD)
+    def f_down(self, v): return 1030 * (v/50)**2 # N (From Linkedin AirShaper CFD)
 
-    def f_max_grip(self, v): self.mu * self.f_n(v)
+    def f_max_grip(self, v): return self.mu * self.f_n(v)
 
-    def f_n(self, v): self.m * self.g + self.f_down(v)
+    def f_n(self, v): return self.m * self.g + self.f_down(v)
 
-    def f_motor(self, v): min(self.f_max_grip(v), self.P/v)
+    def f_motor(self, v): return min(self.f_max_grip(v), self.P/v)
 
     def scale_control(self, v, acc, phi):
         f_gas, f_turn = self.calc_forces(v, acc, phi)

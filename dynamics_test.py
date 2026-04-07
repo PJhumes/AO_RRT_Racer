@@ -72,6 +72,17 @@ while running:
     # theta += theta_dot
 
     car_box = racecar.update_pos()
+    
+    # r_mat = np.array([[np.cos(theta), -np.sin(theta)],
+    #                   [np.sin(theta),  np.cos(theta)]])
+
+    # car =  [
+    #         r_mat @ np.array([0,  CAR_W]) + pos, # Rear left
+    #         r_mat @ np.array([0, -CAR_W]) + pos, # Rear right
+    #         r_mat @ np.array([2*CAR_L, -CAR_W]) + pos, # Front left
+    #         r_mat @ np.array([2*CAR_L,  CAR_W]) + pos, # Front right
+    #        ]
+
         
     
 
@@ -92,8 +103,8 @@ while running:
     pygame.draw.polygon(screen, (34, 139, 34), inner_coords)
 
     # Draw Car
-    pygame.draw.polygon(screen, car_color, car)
-    pygame.draw.circle(screen, (0, 0, 200), pos, 5)
+    pygame.draw.polygon(screen, car_color, car_box)
+    pygame.draw.circle(screen, (0, 0, 200), racecar.state.pos(), 5)
 
     pygame.display.flip()
     clock.tick(60)
