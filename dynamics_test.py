@@ -69,7 +69,7 @@ def load_track(track_name, angle=0):
     outer = coords + normals * df['w_tr_right_m'].values[:,None]
     inner = coords - normals * df['w_tr_left_m'].values[:,None]
 
-    return centerline, outer.tolist(), inner.tolist(), scale
+    return coords, outer.tolist(), inner.tolist(), scale
 
 
 def generate_oval_track(center_x, center_y, straight, r, num_points=100):
@@ -96,7 +96,7 @@ def generate_oval_track(center_x, center_y, straight, r, num_points=100):
 # Tracks are loaded based on GPS Data and physical orientation. Some need to be rotated to fit well.
 # IMS: 88.5, Monza: 90, Silverstone: -80 
 # IMS is Indianapolis Motor Speedway, Rounded-corner square track used for nascar and indycar.
-centerline, outer_coords, inner_coords, scale = load_track("Silverstone", -80)
+centerline, outer_coords, inner_coords, scale = load_track("Spa", 88.5)
 
 print(scale)
 
@@ -110,7 +110,9 @@ pygame.init()
 screen = pygame.display.set_mode((1200, 800))
 clock = pygame.time.Clock()
 
-racecar = Formula_E.Formula_E(100, 100, 0, scale)
+start = centerline[0, :]
+
+racecar = Formula_E.Formula_E(start[0], start[1], 0, scale)
 
 running = True
 while running:
