@@ -9,16 +9,17 @@ class Formula_E():
             self.x = x
             self.y = y
             self.theta = theta
+
         
         def pos(self):
             return np.array([self.x, self.y])
 
-    def __init__(self, x=0, y=0, theta=0):
+    def __init__(self, x=0, y=0, theta=0, scale=1):
         ### Vehicle Parameters ###
         # Geometry
         self.L = 2.97 # m
-        self.length = 5.02 # m
-        self.width = 1.70 # m 
+        self.length = 5.02 *scale # m (scaled for drawing)
+        self.width = 1.70 * scale # m (scaled for drawing)
         self.A = 1.1 # m^2 (frontal Area)
         self.phi_max = 25 * np.pi/180 # rad
 
@@ -43,6 +44,8 @@ class Formula_E():
         self.f_max = self.mu * self.f_n(0) * self.g
         self.brake_max = -self.f_max # Assume the brakes are capable of locking tires at any point
         self.v_cross = self.P_max/self.f_max
+        self.v_max = 320 / 3.6 # kph -> m/s
+        
 
         # Initial Conditions:
         self.state = self.car_state(x, y, theta)

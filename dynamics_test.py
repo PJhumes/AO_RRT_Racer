@@ -5,6 +5,71 @@ import shapely.geometry as geom
 from shapely.prepared import prep
 import numpy as np
 import Formula_E
+import pandas as pd
+
+def load_track(track_name, angle=0):
+    """
+    Load from TU Munich racetrack-database format.
+    Columns: x_m, y_m, w_tr_right_m, w_tr_left_m
+    """
+    df = pd.read_csv("track_info/tracks/" + track_name + ".csv", comment='#', header=None, names=['x_m', 'y_m', 'w_tr_right_m', 'w_tr_left_m'])    
+    centerline = list(zip(df['x_m'], df['y_m']))
+    
+    # Reconstruct inner/outer boundaries
+    # (requires computing track normal vectors)
+    coords = np.array(centerline)
+    coords[:, 1] *= -1 # Flip Y for pygame coordinates.
+
+    angle = np.radians(angle)
+    rotation_matrix = np.array([[np.cos(angle), -np.sin(angle)],
+                                [np.sin(angle),  np.cos(angle)]])
+    coords = coords @ rotation_matrix.T  # Apply rotation
+    
+    # Translate to origin (shift min x/y to 0)
+    coords -= np.min(coords, axis=0)
+
+    # Compute bounding box after initial translation
+    minx, miny = np.min(coords, axis=0)
+    maxx, maxy = np.max(coords, axis=0)
+    width = maxx - minx
+    height = maxy - miny
+
+    # Define screen and margins
+    screen_width, screen_height = 1200, 800
+    margin_x, margin_y = 20, 20  # Adjust as needed for padding
+
+    # Compute scale factor (uniform, preserving aspect ratio)
+    scale_x = (screen_width - 2 * margin_x) / width
+    scale_y = (screen_height - 2 * margin_y) / height
+    scale = min(scale_x, scale_y)
+
+    # Apply scaling
+    coords *= scale
+    # coords[:, 1] *= -1
+
+
+    # Center the track on the screen
+    bbox_center_x = (np.min(coords[:, 0]) + np.max(coords[:, 0])) / 2
+    bbox_center_y = (np.min(coords[:, 1]) + np.max(coords[:, 1])) / 2
+    screen_center_x = screen_width / 2
+    screen_center_y = screen_height / 2
+    offset_x = screen_center_x - bbox_center_x
+    offset_y = screen_center_y - bbox_center_y
+    coords += np.array([offset_x, offset_y])
+
+    # Optional: Rotate by a fixed angle (e.g., 45 degrees) if needed for alignment
+    # Uncomment and adjust 'angle' as needed
+    
+
+    tangents = np.gradient(coords, axis=0)
+    normals = np.column_stack([tangents[:,1], -tangents[:,0]])
+    norms = np.linalg.norm(normals, axis=1, keepdims=True)
+    normals = normals / norms
+
+    outer = coords + normals * df['w_tr_right_m'].values[:,None]
+    inner = coords - normals * df['w_tr_left_m'].values[:,None]
+
+    return centerline, outer.tolist(), inner.tolist(), scale
 
 
 def generate_oval_track(center_x, center_y, straight, r, num_points=100):
@@ -22,10 +87,18 @@ def generate_oval_track(center_x, center_y, straight, r, num_points=100):
         points.append((x, y))
     return points
 
+
 # --- 1. TRACK DESIGN (Shapely) ---
-# Outer boundary and inner hole (the grass)
-outer_coords = generate_oval_track(400, 300, 250, 250)
-inner_coords = generate_oval_track(400, 300, 200, 150)
+# # Outer boundary and inner hole (the grass)
+# outer_coords = generate_oval_track(400, 300, 250, 250)
+# inner_coords = generate_oval_track(400, 300, 200, 150)
+
+# Tracks are loaded based on GPS Data and physical orientation. Some need to be rotated to fit well.
+# IMS: 88.5, Monza: 90, Silverstone: -80 
+# IMS is Indianapolis Motor Speedway, Rounded-corner square track used for nascar and indycar.
+centerline, outer_coords, inner_coords, scale = load_track("Silverstone", -80)
+
+print(scale)
 
 # The 'track' is the area between the outer wall and the inner hole
 track_poly = geom.Polygon(shell=outer_coords, holes=[inner_coords])
@@ -34,10 +107,10 @@ prepared_track = prep(track_poly)
 
 # --- 2. PYGAME SETUP ---
 pygame.init()
-screen = pygame.display.set_mode((800, 600))
+screen = pygame.display.set_mode((1200, 800))
 clock = pygame.time.Clock()
 
-racecar = Formula_E.Formula_E(100, 100, 0)
+racecar = Formula_E.Formula_E(100, 100, 0, scale)
 
 running = True
 while running:
@@ -56,34 +129,17 @@ while running:
         
     # Throttle/Brake
     if keys[pygame.K_UP]:
-        racecar.v = min(5, racecar.v+0.1)  
+        racecar.v = min(racecar.v_max * scale, racecar.v+0.1)  
 
     elif keys[pygame.K_DOWN]:  
-        racecar.v = max(-5/2, racecar.v-0.2)
+        racecar.v = max(-racecar.v_max/5 * scale, racecar.v-0.2)
 
     else: # Slowly coast to a stop
         if racecar.v > 0: racecar.v = max(0, racecar.v-0.03)
         if racecar.v < 0: racecar.v = min(0, racecar.v+0.03)
     
 
-    # theta_dot = car_v/CAR_L*np.atan(phi)
-    # pos[0] += car_v*np.cos(theta)
-    # pos[1] += car_v*np.sin(theta)
-    # theta += theta_dot
-
     car_box = racecar.update_pos()
-    
-    # r_mat = np.array([[np.cos(theta), -np.sin(theta)],
-    #                   [np.sin(theta),  np.cos(theta)]])
-
-    # car =  [
-    #         r_mat @ np.array([0,  CAR_W]) + pos, # Rear left
-    #         r_mat @ np.array([0, -CAR_W]) + pos, # Rear right
-    #         r_mat @ np.array([2*CAR_L, -CAR_W]) + pos, # Front left
-    #         r_mat @ np.array([2*CAR_L,  CAR_W]) + pos, # Front right
-    #        ]
-
-        
     
 
     # --- 3. COLLISION LOGIC ---
@@ -104,7 +160,7 @@ while running:
 
     # Draw Car
     pygame.draw.polygon(screen, car_color, car_box)
-    pygame.draw.circle(screen, (0, 0, 200), racecar.state.pos(), 5)
+    # pygame.draw.circle(screen, (0, 0, 200), racecar.state.pos(), 1*scale)
 
     pygame.display.flip()
     clock.tick(60)
