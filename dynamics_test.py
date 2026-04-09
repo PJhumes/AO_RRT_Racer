@@ -61,15 +61,15 @@ def load_track(track_name, angle=0):
     # Uncomment and adjust 'angle' as needed
     
 
-    tangents = np.gradient(coords, axis=0)
-    normals = np.column_stack([tangents[:,1], -tangents[:,0]])
+    gradients = np.gradient(coords, axis=0)
+    normals = np.column_stack([gradients[:,1], -gradients[:,0]])
     norms = np.linalg.norm(normals, axis=1, keepdims=True)
     normals = normals / norms
 
     outer = coords + normals * df['w_tr_right_m'].values[:,None]
     inner = coords - normals * df['w_tr_left_m'].values[:,None]
 
-    return coords, outer.tolist(), inner.tolist(), scale
+    return coords, outer.tolist(), inner.tolist(), gradients, scale
 
 
 def generate_oval_track(center_x, center_y, straight, r, num_points=100):
@@ -96,9 +96,11 @@ def generate_oval_track(center_x, center_y, straight, r, num_points=100):
 # Tracks are loaded based on GPS Data and physical orientation. Some need to be rotated to fit well.
 # IMS: 88.5, Monza: 90, Silverstone: -80 
 # IMS is Indianapolis Motor Speedway, Rounded-corner square track used for nascar and indycar.
-centerline, outer_coords, inner_coords, scale = load_track("Spa", 88.5)
+centerline, outer_coords, inner_coords, gradients, scale = load_track("Spa", 88.5)
 
-print(scale)
+print(f"Track Scale: {scale} px/m (<- check that)")
+track_center = geom.linestring.LineString(centerline)
+print(f"Scaled Track Length: {track_center.length / scale}")
 
 # The 'track' is the area between the outer wall and the inner hole
 track_poly = geom.Polygon(shell=outer_coords, holes=[inner_coords])
@@ -109,10 +111,12 @@ prepared_track = prep(track_poly)
 pygame.init()
 screen = pygame.display.set_mode((1200, 800))
 clock = pygame.time.Clock()
+text = pygame.font.SysFont('Arial', 24)
+
 
 start = centerline[0, :]
 
-racecar = Formula_E.Formula_E(start[0], start[1], 0, scale)
+racecar = Formula_E.Formula_E(start[0], start[1], np.atan2(gradients[0,1], gradients[0,0]), scale)
 
 running = True
 while running:
@@ -123,25 +127,31 @@ while running:
     # Move car with arrow keys
     keys = pygame.key.get_pressed()
     # Turning Motion
-    if keys[pygame.K_LEFT]:  racecar.phi -= .01
-    elif keys[pygame.K_RIGHT]: racecar.phi += .01
+    if keys[pygame.K_LEFT]:  racecar.phi = np.radians(-5)
+    elif keys[pygame.K_RIGHT]: racecar.phi = np.radians(5)
     else:
         if racecar.phi > 0: racecar.phi = max(0, racecar.phi-0.05)
         if racecar.phi < 0: racecar.phi = min(0, racecar.phi+0.05)
         
     # Throttle/Brake
     if keys[pygame.K_UP]:
-        racecar.v = min(racecar.v_max * scale, racecar.v+0.1)  
-
+        f, t_pos = racecar.f_acc(1)
     elif keys[pygame.K_DOWN]:  
-        racecar.v = max(-racecar.v_max/5 * scale, racecar.v-0.2)
+        f, b_pos = racecar.f_acc(-1)
 
     else: # Slowly coast to a stop
+        f = 0
         if racecar.v > 0: racecar.v = max(0, racecar.v-0.03)
         if racecar.v < 0: racecar.v = min(0, racecar.v+0.03)
+
+    racecar.accelerate(f)
+
     
 
     car_box = racecar.update_pos()
+    # "Text content", Anti-alias, (R, G, B) Color
+    velocity_display = text.render("Vel: " + str(round(racecar.v, 3)), True, (255, 255, 255))
+    force_display = text.render("Force: " + str(round(f, 3)), True, (255, 255, 255))
     
 
     # --- 3. COLLISION LOGIC ---
@@ -163,6 +173,9 @@ while running:
     # Draw Car
     pygame.draw.polygon(screen, car_color, car_box)
     # pygame.draw.circle(screen, (0, 0, 200), racecar.state.pos(), 1*scale)
+
+    screen.blit(velocity_display, (10, 10))
+    screen.blit(force_display, (10, 40))
 
     pygame.display.flip()
     clock.tick(60)

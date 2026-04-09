@@ -13,7 +13,7 @@ class Formula_E():
         def pos(self):
             return np.array([self.x, self.y])
 
-    def __init__(self, x=0, y=0, theta=0, scale=1):
+    def __init__(self, x=0, y=0, theta=0, scale=1, framerate=60):
         ### Vehicle Parameters ###
         # Geometry
         self.L = 2.97 # m
@@ -41,7 +41,7 @@ class Formula_E():
 
         # Powertrain
         self.P_max = 300 * 1000 # W
-        self.f_max = self.mu * self.f_n(0) * self.g
+        self.f_max = self.mu * self.m
         self.brake_max = -self.f_max # Assume the brakes are capable of locking tires at any point
         self.v_cross = self.P_max/self.f_max
         self.v_max = 320 / 3.6 # kph -> m/s
@@ -51,6 +51,7 @@ class Formula_E():
         self.state = self.car_state(x, y, theta)
         self.phi = 0
         self.v = 0
+        self.dt = 1/framerate
 
     def rand_control(self):
         phi = rand.uniform(-self.phi_max, self.phi_max)
@@ -61,25 +62,49 @@ class Formula_E():
 
     def theta_dot(self, v, phi): return v/self.L*np.atan(phi)
 
-    def update_pos(self): # FIXME: Close but not fully right.
+    def update_pos(self): # FIXME: Close but not fully right. Pretty Dang good though. Good enough for now
         theta = self.state.theta
         self.state.x += self.v*np.cos(theta)
         self.state.y += self.v*np.sin(theta)
         self.state.theta += self.theta_dot(self.v, self.phi)
         theta = self.state.theta
 
-        r_mat = np.array([[np.cos(theta), -np.sin(theta)],
+        r_matrix = np.array([[np.cos(theta), -np.sin(theta)],
                           [np.sin(theta),  np.cos(theta)]])
 
         car_box =  [
-                    r_mat @ np.array([0,  self.width]) + self.state.pos(), # Rear left
-                    r_mat @ np.array([0, -self.width]) + self.state.pos(), # Rear right
-                    r_mat @ np.array([2*self.length, -self.width]) + self.state.pos(), # Front left
-                    r_mat @ np.array([2*self.length,  self.width]) + self.state.pos(), # Front right
+                    r_matrix @ np.array([0,  self.width]) + self.state.pos(), # Rear left
+                    r_matrix @ np.array([0, -self.width]) + self.state.pos(), # Rear right
+                    r_matrix @ np.array([2*self.length, -self.width]) + self.state.pos(), # Front left
+                    r_matrix @ np.array([2*self.length,  self.width]) + self.state.pos(), # Front right
                    ]
         
         return car_box
+    
+    def accelerate(self, f): self.v += f/self.m * self.dt
 
+    ### FORCES ###
+    def f_acc(self, a):
+        """ a = throttle or brake %. Both are kept under the traction limit. """
+        if a > 0:
+            # Automatically reduces power to traction limit if necessary
+            if self.v == 0:
+                f_acc = self.mu*self.m * a
+                pedal_pos = a
+            else:
+                f_acc = min(self.mu*self.f_n(self.v), abs(self.P_max * a / self.v))
+                pedal_pos = f_acc * self.v / self.P_max
+        else:
+            # This feels a little weird... It's a percent of the available grip not a percent of the 
+            # available brake pressure like a driver would normally have. Probably fine, right??
+            f_acc = self.mu*self.f_n(self.v) * a
+            pedal_pos = -a
+
+
+        return f_acc - self.f_drag(self.v), pedal_pos
+    
+    def f_turn(self, phi):
+        pass
 
     def f_drag(self, v): return 1050 * (v/50)**2 # N (From Linkedin AirShaper CFD)
 
