@@ -98,7 +98,11 @@ def generate_oval_track(center_x, center_y, straight, r, num_points=100):
 # IMS is Indianapolis Motor Speedway, Rounded-corner square track used for nascar and indycar.
 centerline, outer_coords, inner_coords, gradients, scale = load_track("Spa", 88.5)
 
-print(f"Track Scale: {scale} px/m (<- check that)")
+print(f"Track Scale: {scale} px/m (<- check units)")
+
+###
+### USE THIS FOR CENTERLINE CALCULATIONS. The shapely library has lots of good tools for 2D Geometry.
+###
 track_center = geom.linestring.LineString(centerline)
 print(f"Scaled Track Length: {track_center.length / scale}")
 
