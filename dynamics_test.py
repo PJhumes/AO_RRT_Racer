@@ -9,7 +9,7 @@ import Track_Collisions
 import pandas as pd
 
 window_size = (1200, 800)
-track = Track_Collisions.Track("IMS", 88.5, window_size)
+track = Track_Collisions.Track("IMS", window_size=window_size)
 display_stats = True
 
 print(f"Track Scale: {track.scale} px/m (<- check units)")
@@ -23,7 +23,7 @@ clock = pygame.time.Clock()
 text = pygame.font.SysFont('Arial', 24)
 framerate = 60
 
-racecar = Formula_E.Formula_E(track.start[0], track.start[1], np.atan2(track.gradients[0,1], track.gradients[0,0]), track.scale, framerate)
+racecar = Formula_E.Formula_E(track.start[0], track.start[1], track.start_ang, track.scale, framerate)
 
 running = True
 while running:
@@ -51,11 +51,6 @@ while running:
         p_pos = 0
         
     racecar.accelerate(f)
-
-    
-
-
-    
 
     # --- 3. COLLISION LOGIC ---
     car_box = racecar.update_pos() # Apply euler timestep and recalculate hitbox

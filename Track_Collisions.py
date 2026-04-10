@@ -6,14 +6,22 @@ from shapely.prepared import prep
 import numpy as np
 import Formula_E
 import pandas as pd
+rand = np.random.default_rng()
+
 
 class Track():
     def __init__(self, track_name="IMS", angle=88.5, window_size=(1200, 800)):
         """Tracks are loaded based on GPS Data and physical orientation. Some need to be rotated to fit well.
-            IMS: 88.5, Monza: 90, Silverstone: -80 
+            IMS: 88.5, Monza: 90, Silverstone: -80 (Automatically taken care of. Other tracks default to 88.5)
             IMS is Indianapolis Motor Speedway, 4000 (ish) meter, Rounded-corner square track used for nascar and indycar.
             We will use it for testing."""
         self.window_size = window_size
+
+        if track_name == "Monza":
+            angle = 90
+        elif track_name == "Silverstone":
+            angle = -80
+
         track_data = self.load_track(track_name, angle)
 
         self.centerline = geom.linestring.LineString(track_data[0])
@@ -24,10 +32,9 @@ class Track():
 
         self.prepared = prep(geom.Polygon(shell=self.outer_coords, holes=[self.inner_coords]))
         self.start = self.centerline.coords[0]
+        self.start_ang = np.atan2(self.gradients[0,1], self.gradients[0,0])
 
         self.goal = geom.Polygon([self.inner_coords[-1], self.inner_coords[-2], self.outer_coords[-2], self.outer_coords[-1]])
-
-        
 
     def load_track(self, track_name:str, angle=0.):
         """
@@ -89,26 +96,30 @@ class Track():
 
         return coords, outer.tolist(), inner.tolist(), gradients, scale
 
-    def generate_oval_track(center_x, center_y, straight, r, num_points=100):
-        """Depricated. Generates generic non-scaled oval track"""
-        points = []
-        for i in range(num_points):
-            angle = 2 * np.pi * i / num_points
-            x = center_x + r * np.cos(angle)
-            y = center_y + r * np.sin(angle)
-
-            if angle < np.pi/2 or angle > 3*np.pi/2:
-                x += straight/2
-            else:
-                x -= straight/2
-            points.append((x, y))
-        return points
-
     def is_colliding(self, hitbox:geom.Polygon):
         return not self.prepared_track.contains(hitbox)
     
     def goal_reached(self, hitbox:geom.Polygon):
         return self.goal.intersects(hitbox)
+    
+    def sample_goal(self):
+        minx, miny, maxx, maxy = self.goal.bounds()
+        x = rand.uniform(minx, maxx)
+        y = rand.uniform(miny, maxy)
+        sample = geom.point.Point((x, y))
+
+        if self.goal.contains(sample):
+            return sample
+        else:
+            return self.sample_goal()
+        
+    def sample_state(self):
+        x = rand.uniform(0, self.window_size[0])
+        y = rand.uniform(0, self.window_size[1])
+
+        return geom.point.Point((x, y))
+        
+
 
 
 
