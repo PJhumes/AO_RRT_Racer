@@ -1,4 +1,4 @@
-
+import shapely.geometry as geom
 import numpy as np
 rand = np.random.default_rng()
 
@@ -16,7 +16,7 @@ class Formula_E():
     def __init__(self, x=0, y=0, theta=0, scale=1, framerate=60):
         ### Vehicle Parameters ###
         # Geometry
-        self.L = 2.97 # m
+        self.L = 2.97 * scale # m
         self.length = 5.02 *scale # m (scaled for drawing)
         self.width = 1.70 * scale # m (scaled for drawing)
         self.A = 1.1 # m^2 (frontal Area)
@@ -55,9 +55,7 @@ class Formula_E():
 
     def rand_control(self):
         phi = rand.uniform(-self.phi_max, self.phi_max)
-        acc = rand.uniform(-self.F_max, self.P_max) 
-        # Min braking power is always traction limited
-        # Full throttle is the max sample, it may be reduced later.
+        acc = rand.uniform(-1, 1) # Basically throttle/brake percentages, forces are taken care of in f_acc()
         return (acc, phi)
 
     def theta_dot(self, v, phi): return v/self.L*np.atan(phi)
@@ -81,6 +79,20 @@ class Formula_E():
         
         return car_box
     
+    def get_hitbox(self):
+        theta = self.state.theta
+        r_matrix = np.array([[np.cos(theta), -np.sin(theta)],
+                          [np.sin(theta),  np.cos(theta)]])
+
+        car_box =  [
+                    r_matrix @ np.array([0,  self.width]) + self.state.pos(), # Rear left
+                    r_matrix @ np.array([0, -self.width]) + self.state.pos(), # Rear right
+                    r_matrix @ np.array([2*self.length, -self.width]) + self.state.pos(), # Front left
+                    r_matrix @ np.array([2*self.length,  self.width]) + self.state.pos(), # Front right
+                   ]
+        
+        return geom.polygon.Polygon(car_box)
+    
     def accelerate(self, f): self.v += f/self.m * self.dt
 
     ### FORCES ###
@@ -97,8 +109,14 @@ class Formula_E():
         else:
             # This feels a little weird... It's a percent of the available grip not a percent of the 
             # available brake pressure like a driver would normally have. Probably fine, right??
-            f_acc = self.mu*self.f_n(self.v) * a
-            pedal_pos = -a
+            if self.v > 0:
+                f_acc = self.mu*self.f_n(self.v) * a
+                pedal_pos = -a
+            else:
+                f_acc = 0
+                pedal_pos = -a
+                self.v = 0
+            
 
 
         return f_acc - self.f_drag(self.v), pedal_pos
@@ -110,6 +128,8 @@ class Formula_E():
 
     def f_down(self, v): return 1030 * (v/50)**2 # N (From Linkedin AirShaper CFD)
 
+    def f_roll(self, v): return 1000 if v > 0 else 0
+       
     def f_max_grip(self, v): return self.mu * self.f_n(v)
 
     def f_n(self, v): return self.m * self.g + self.f_down(v)
@@ -118,7 +138,7 @@ class Formula_E():
 
     def scale_control(self, v, acc, phi):
         f_gas, f_turn = self.calc_forces(v, acc, phi)
-        f_mag = np.sqrt(f_gas**2, f_turn**2)
+        f_mag = np.sqrt(f_gas**2 + f_turn**2)
         self.f_max = self.f_max_grip(v)
 
         if f_mag < self.max_f:
@@ -127,10 +147,9 @@ class Formula_E():
             return (acc/f_mag*self.f_max, np.atan(np.tan(phi)/f_mag*self.f_max)) # FIXME: Check this.
 
     def calc_forces(self, v, acc, phi):
-        f_gas = self.m * acc
 
         # atan(phi) = L/R
         R = self.L/np.tan(phi)
         f_turn = self.m * v**2 / R
 
-        return (f_gas, f_turn)
+        return (self.f_acc(acc), f_turn)
