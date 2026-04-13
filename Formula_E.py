@@ -2,16 +2,21 @@ import shapely.geometry as geom
 import numpy as np
 rand = np.random.default_rng()
 
-
-class Formula_E():
-    class car_state():
-        def __init__(self, x, y, theta):
+class Car_State():
+        def __init__(self, x, y, theta, v=0):
             self.x = x
             self.y = y
             self.theta = theta
+            self.v = v
 
         def pos(self):
             return np.array([self.x, self.y])
+        
+        def copy(self):
+            return Car_State(self.x, self.y, self.theta, self.v)
+
+
+class Formula_E():
 
     def __init__(self, x=0, y=0, theta=0, scale=1, framerate=60):
         ### Vehicle Parameters ###
@@ -48,9 +53,8 @@ class Formula_E():
         
 
         # Initial Conditions:
-        self.state = self.car_state(x, y, theta)
+        self.state = Car_State(x, y, theta, 0)
         self.phi = 0
-        self.v = 0
         self.dt = 1/framerate
 
     def rand_control(self):
@@ -60,69 +64,81 @@ class Formula_E():
 
     def theta_dot(self, v, phi): return v/self.L*np.atan(phi)
 
-    def update_pos(self): # FIXME: Close but not fully right. Pretty Dang good though. Good enough for now
-        theta = self.state.theta
-        self.state.x += self.v*np.cos(theta)
-        self.state.y += self.v*np.sin(theta)
-        self.state.theta += self.theta_dot(self.v, self.phi)
-        theta = self.state.theta
+    def turning_circle(self, phi): return self.L/np.tan(phi)
+
+    def update_pos(self, state:Car_State=None): 
+        if not state:
+            state = self.state
+        theta = state.theta
+
+        state.x += state.v*np.cos(theta)
+        state.y += state.v*np.sin(theta)
+        state.theta += self.theta_dot(state.v, self.phi)
+
+        theta = state.theta
 
         r_matrix = np.array([[np.cos(theta), -np.sin(theta)],
                           [np.sin(theta),  np.cos(theta)]])
 
         car_box =  [
-                    r_matrix @ np.array([0,  self.width]) + self.state.pos(), # Rear left
-                    r_matrix @ np.array([0, -self.width]) + self.state.pos(), # Rear right
-                    r_matrix @ np.array([2*self.length, -self.width]) + self.state.pos(), # Front left
-                    r_matrix @ np.array([2*self.length,  self.width]) + self.state.pos(), # Front right
-                   ]
-        
-        return car_box
-    
-    def get_hitbox(self):
-        theta = self.state.theta
-        r_matrix = np.array([[np.cos(theta), -np.sin(theta)],
-                          [np.sin(theta),  np.cos(theta)]])
-
-        car_box =  [
-                    r_matrix @ np.array([0,  self.width]) + self.state.pos(), # Rear left
-                    r_matrix @ np.array([0, -self.width]) + self.state.pos(), # Rear right
-                    r_matrix @ np.array([2*self.length, -self.width]) + self.state.pos(), # Front left
-                    r_matrix @ np.array([2*self.length,  self.width]) + self.state.pos(), # Front right
+                    r_matrix @ np.array([0,  self.width]) + state.pos(), # Rear left
+                    r_matrix @ np.array([0, -self.width]) + state.pos(), # Rear right
+                    r_matrix @ np.array([2*self.length, -self.width]) + state.pos(), # Front left
+                    r_matrix @ np.array([2*self.length,  self.width]) + state.pos(), # Front right
                    ]
         
         return geom.polygon.Polygon(car_box)
     
-    def accelerate(self, f): self.v += f/self.m * self.dt
+    def get_hitbox(self, state:Car_State=None):
+        if not state:
+            state = self.state
+        theta = state.theta
+        r_matrix = np.array([[np.cos(theta), -np.sin(theta)],
+                          [np.sin(theta),  np.cos(theta)]])
+
+        car_box =  [
+                    r_matrix @ np.array([0,  self.width]) + state.pos(), # Rear left
+                    r_matrix @ np.array([0, -self.width]) + state.pos(), # Rear right
+                    r_matrix @ np.array([2*self.length, -self.width]) + state.pos(), # Front left
+                    r_matrix @ np.array([2*self.length,  self.width]) + state.pos(), # Front right
+                   ]
+        
+        return geom.polygon.Polygon(car_box)
+
+    def check_grip(self, v, acc, phi): return self.f_req(v, acc, phi) < self.f_max_grip(v)    
+    
+    def accelerate(self, f, state:Car_State=None): 
+        if not state:
+            state = self.state
+        state.v += f/self.m * self.dt
 
     ### FORCES ###
-    def f_acc(self, a):
-        """ a = throttle or brake %. Both are kept under the traction limit. """
+    def f_acc(self, a, state:Car_State=None):
+        if not state:
+            state = self.state
+        """ a = throttle or brake %. Both are kept under the traction limit (as if it has traction control) """
         if a > 0:
             # Automatically reduces power to traction limit if necessary
-            if self.v == 0:
+            if state.v == 0:
                 f_acc = self.mu*self.m * a
                 pedal_pos = a
             else:
-                f_acc = min(self.mu*self.f_n(self.v), abs(self.P_max * a / self.v))
-                pedal_pos = f_acc * self.v / self.P_max
+                f_acc = min(self.mu*self.f_n(state.v), abs(self.P_max * a / state.v))
+                pedal_pos = f_acc * state.v / self.P_max
         else:
             # This feels a little weird... It's a percent of the available grip not a percent of the 
             # available brake pressure like a driver would normally have. Probably fine, right??
-            if self.v > 0:
-                f_acc = self.mu*self.f_n(self.v) * a
+            if state.v > 0:
+                f_acc = self.mu*self.f_n(state.v) * a
                 pedal_pos = -a
             else:
                 f_acc = 0
                 pedal_pos = -a
-                self.v = 0
+                state.v = 0
             
-
-
-        return f_acc - self.f_drag(self.v), pedal_pos
+        return f_acc - self.f_drag(state.v), pedal_pos
     
-    def f_turn(self, phi):
-        pass
+    def f_turn(self, v, phi): return self.m * v**2 / self.turning_circle(phi)
 
     def f_drag(self, v): return 1050 * (v/50)**2 # N (From Linkedin AirShaper CFD)
 
@@ -136,6 +152,8 @@ class Formula_E():
 
     def f_motor(self, v): return min(self.f_max_grip(v), self.P/v)
 
+    def f_req(self, v, acc, phi): return np.linalg.norm([self.f_acc(acc), self.f_turn(v, phi)])
+
     def scale_control(self, v, acc, phi):
         f_gas, f_turn = self.calc_forces(v, acc, phi)
         f_mag = np.sqrt(f_gas**2 + f_turn**2)
@@ -146,10 +164,8 @@ class Formula_E():
         else:
             return (acc/f_mag*self.f_max, np.atan(np.tan(phi)/f_mag*self.f_max)) # FIXME: Check this.
 
-    def calc_forces(self, v, acc, phi):
-
-        # atan(phi) = L/R
-        R = self.L/np.tan(phi)
-        f_turn = self.m * v**2 / R
-
-        return (self.f_acc(acc), f_turn)
+    def calc_forces(self, v, acc, phi):  
+        f_acc = self.f_acc(acc)
+        f_turn = self.f_turn(v, phi)
+        norm = np.linalg.norm([f_acc, f_turn])
+        return (f_acc, f_turn, norm)

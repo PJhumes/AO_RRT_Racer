@@ -47,14 +47,13 @@ while running:
         f, p_pos = racecar.f_acc(-1)
 
     else: # Slowly coast to a stop
-        f = -(racecar.f_drag(racecar.v) + racecar.f_roll(racecar.v))
+        f = -(racecar.f_drag(racecar.state.v) + racecar.f_roll(racecar.state.v))
         p_pos = 0
         
     racecar.accelerate(f)
 
     # --- 3. COLLISION LOGIC ---
-    car_box = racecar.update_pos() # Apply euler timestep and recalculate hitbox
-    car_hitbox = geom.polygon.Polygon(car_box)
+    car_hitbox = racecar.update_pos() # Apply euler timestep and recalculate hitbox
 
     # Check if the car is entirely WITHIN the track polygon
     is_colliding = not track.prepared.contains(car_hitbox)
@@ -69,11 +68,11 @@ while running:
     pygame.draw.polygon(screen, (0, 0, 0), track.goal.exterior.coords)
 
     # Draw Car
-    pygame.draw.polygon(screen, car_color, car_box)
+    pygame.draw.polygon(screen, car_color, car_hitbox.exterior.coords)
     # pygame.draw.circle(screen, (0, 0, 200), racecar.state.pos(), 1*scale)
 
     if display_stats:
-        velocity_display = text.render("Vel: " + str(round(racecar.v, 3)), True, (255, 255, 255))
+        velocity_display = text.render("Vel: " + str(round(racecar.state.v, 3)), True, (255, 255, 255))
         force_display = text.render("Force: " + str(round(f, 3)), True, (255, 255, 255))
         goal_display = text.render("Goal Reached: " + str(track.goal_reached(car_hitbox)), True, (255, 255, 255))
         

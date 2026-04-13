@@ -8,6 +8,8 @@ from collisions import PolygonEnvironment
 import time
 import Track_Collisions
 import Formula_E
+import shapely.geometry as geom
+
 
 # rand = np.random.default_rng(42)
 rand = np.random.default_rng()
@@ -101,7 +103,7 @@ class RRT(object):
     '''
     Rapidly-Exploring Random Tree Planner
     '''
-    def __init__(self, num_samples:int, track:str, framerate=60, epsilon=1, connect_prob=0.05, window_size=(1200, 800)):
+    def __init__(self, num_samples:int, track:str, ts_max:int, framerate=60, connect_prob=0.05, window_size=(1200, 800)):
         '''
         Initialize an RRT planning instance
         '''
@@ -115,38 +117,35 @@ class RRT(object):
 
 
         self.K = num_samples
-        # self.n = frame_steps
-        self.epsilon = epsilon # number of timesteps for a move
+        self.T_prop_max = ts_max
         self.connect_prob = connect_prob
+
+        # AO_RRT weight parameters
         self.wx = 1
         self.wc = 1
 
-
         self.in_collision = self.track.is_colliding
-        # if collision_func is None:
-        #     self.in_collision = self.fake_in_collision
 
         # Setup range limits
         self.limits = np.array([[0,0], [window_size]]).T
         print(self.limits)
 
 
-        # self.ranges = self.limits[:,1] - self.limits[:,0]
         self.found_path = False
 
-    def build_ao_rrt(self, init, goal, T_prop, c_max, U=None):
+    def build_ao_rrt(self, T_prop:int, c_max:float):
         '''
         Build the rrt from init to goal
         Returns path to goal or None
         '''
-        self.goal = np.array(goal)
-        self.init = np.array(init)
-        self.found_path = False
+        self.T_prop = T_prop
+        self.goal = self.track.goal
+        self.init = self.racecar.state
         self.c_max = c_max
-        self.goal_region = .25
+
 
         y_min = TreeNode(None, np.inf)
-        y_init = TreeNode(np.array(init), 0)
+        y_init = TreeNode(np.array(self.init), 0)
 
         # Build tree and search
         self.T = RRTSearchTree(y_init)
@@ -154,22 +153,27 @@ class RRT(object):
         # Sample and extend
         for k in range(self.K):
 
-            x_rand = self.sample()
+            # if rand.random() < self.connect_prob: # Goal Bias?? IDK if AO_RRT uses this
+            #     x_rand = self.track.sample_goal_state()
+            # else:
+            #     x_rand = self.track.sample_state()
+
+            x_rand = self.track.sample_state()
+
             c_rand = rand.random() * self.c_max
             y_rand = TreeNode(x_rand, c_rand)
 
-            t_rand = rand.random() * T_prop
-            # u_rand = self.rand_control()
-            y_near, _ = self.T.find_nearest(y_rand, self.wx, self.wc) # FIXME
+            t_rand = rand.integers(1, T_prop)
+            u_rand = self.racecar.rand_control()
+            y_near, _ = self.T.find_nearest(y_rand, self.wx, self.wc) # FIXME Is this right??
 
-            u_rand = (x_rand - y_near.state) / norm((x_rand-y_near.state)) * self.epsilon
             pi_new, x_new = self.propagate(y_near.state, u_rand, t_rand)
             c_new = y_near.cost + self.traj_cost(pi_new)
 
-            if not self.edge_collision(pi_new):
+            if pi_new:
                 y_new = TreeNode(x_new, c_new)
                 self.T.add_node(y_new, y_near, pi_new)
-                if norm(y_new.state - self.goal) < self.goal_region and y_new.cost < y_min.cost:
+                if self.track.goal_reached(self.racecar.get_hitbox(x_new)):
                     y_min = y_new
                     self.c_max = y_min.cost
                     self.found_path = True
@@ -190,100 +194,43 @@ class RRT(object):
             if n.cost > self.c_max:
                 self.T.remove_node(n)
 
-    def rand_control(self):
-        maxv = 5
-
-        rand = self.sample()
-        rand /= norm(rand)
-
-        u_rand = rand * 2*maxv - np.ones_like(self.goal) * maxv
-
-        return u_rand
-
     def edge_collision(self, edge):
         for e in edge:
             if self.in_collision(e):
                 return True
         return False
 
-    def propagate(self, x, u, t):
+    def propagate(self, x:Formula_E.Car_State, u=(0, 0), t=10):
         # Forward Dynamics:
-        # Assuming direct velocity control in any direction
-        traj_num = max(50, t/self.epsilon*10)
-        dt = np.linspace(0, t, traj_num, endpoint=True)
-        dx = np.outer(dt, u)
+        x = x.copy()
+        self.racecar.phi = u[1]  # Update car steering angle
 
-        pi = np.outer(np.ones(traj_num), x) + dx
-
-        for i in range(len(dt)):
-
-            if norm(pi[i, :] - self.goal) < self.goal_region:
-                pi = pi[:i+1, :]
-                break 
+        ### NOTE: This just rejects the whole sample if there is any collision
+        ### NOTE: It also throws it out if grip is exceeded which can happen mid-path if we're close to the limit
+        pi = [x.pos]
+        for i in range(len(t)):
+            if self.racecar.check_grip(x.v, u[0], u[1]): # Friction Circle Check
+                f_long = self.racecar.f_acc(u[0], x) # Longitudinal forces -> function of v and acc
                 
-        return (pi, pi[-1, :])
-    
-    def steer(self, x, u, t):
-        # Forward Dynamics:
-        # Assuming direct velocity control in any direction
-        traj_num = max(100, t/self.epsilon*10)
-        dt = np.linspace(0, t, traj_num, endpoint=True)
-        dx = np.outer(dt, u)
-
-        pi = np.outer(np.ones(traj_num), x) + dx
-
-        return (pi, pi[-1, :])
-    
-    def traj_cost(self, pi):
-        # Simple distance cost for moving in straight lines.
-        return norm(pi[0, :] - pi[-1, :])
-
-    def sample(self, no_goal=False):
-        '''
-        Sample a new configuration
-        Returns a configuration of size self.n bounded in self.limits
-        '''
-        # Return goal with connect_prob probability
-        if rand.random() < self.connect_prob and not no_goal:
-            return self.goal
-        else:
-            s = []
-            for i in range(self.n):
-                diff = self.limits[i, 1] - self.limits[i, 0]
-                s.append(self.limits[i, 0] + rand.random() * diff)
-            s = np.array(s)
-            return s
-
-    def extend(self, T: RRTSearchTree, q):
-        '''
-        Perform rrt extend operation.
-        q - new configuration to extend towards
-        returns - tuple of (status, TreeNode)
-           status can be: _TRAPPED, _ADVANCED or _REACHED
-        '''
-        q_near, q_dist = T.find_nearest(q)
-        q_new = TreeNode(q_near.state + min(1, self.epsilon/q_dist) * (q - q_near.state), q_near)
-        if self.visible(q_near.state, q_new.state):
-            T.add_node(q_new, q_near)
-            if (q_new.state == q).all():
-                return (_REACHED, q_new)
+                self.racecar.accelerate(f_long, x) # Update car velocity (in x)
+                hitbox = self.racecar.update_pos(x) # Changes values in x
+                
+                if self.track.is_colliding(hitbox):
+                    return (None, None)
+                else:
+                    pi.append(x.pos)
+                
             else:
-                return (_ADVANCED, q_new)
-        return (_TRAPPED, None)
-    
-    def extend_connect(self, T: RRTSearchTree, q):
-        '''
-        Perform rrt-connect extend operation.
-        repeatedly calls extend().
-        q - new configuration to extend towards
-        returns - tuple of (status, TreeNode)
-           status can be: _TRAPPED, _ADVANCED or _REACHED
-        '''
-        while True:
-            status = self.extend(T, q)
-            if status[0] != _ADVANCED:
-                return status
+                return (None, None)
 
+        pi = geom.linestring.LineString(pi)
+        return (pi, x)
+    
+    def traj_cost(self, pi:geom.LineString): # FIXME: update to include path line integral cost for optimizing TIME not distance.
+        if not pi:
+            return None
+        else:
+            return pi.length # polyline length is path cost for now.
 
     def fake_in_collision(self, q):
         '''
@@ -291,61 +238,24 @@ class RRT(object):
         '''
         return False
 
-    def visible(self, q_near: np.array, q_new: np.array):
-        ''' Returns whether a state q_new is visible from its nearest neighbor state q_near. 
-        (Evaluates the edge for collision)
-        '''
-        vec = q_new-q_near
-        res = min(0.1, self.epsilon/10)
-        for m in np.arange(1, 0, -res): # Start at the new config (don't bother checking the rest if the end is in collision)
-            if self.in_collision(q_near + m*vec):
-                return False
-        return True
 
-def test_rrt_env(num_samples=500, step_length=5.0, env='./env0.txt',
-                 connect=False, bidirection=False, ao=False, t_prop = 1, connect_prob=0.05, rand_map=False):
-    pe = PolygonEnvironment()
-    pe.read_env(env)
+def test_rrt_env(num_samples=500, track='IMS', step_length=10, framerate=60, connect_prob=0.05):
+    # pe = PolygonEnvironment()
+    # pe.read_env(env)
 
-    dims = len(pe.start)
+    # dims = len(pe.start)
     start_time = time.time()
 
-    rrt = RRT(num_samples,
-              dims,
-              step_length,
-              lims = pe.lims,
-              connect_prob = connect_prob,
-              collision_func=pe.test_collisions)
+    rrt = RRT(num_samples, track, step_length, framerate, connect_prob)
     
-    if rand_map:
-        pe.start = rrt.sample(no_goal=True)
-        pe.goal = rrt.sample(no_goal=True)
+    plan = rrt.build_ao_rrt()
 
-    if bidirection and connect:
-        print('Warning both --bidirection and --connect are set. Executing Bi-directional RRT-Connect')
-        
-    if bidirection:
-        plan = rrt.build_bidirectional_rrt_connect(pe.start, pe.goal)
-    elif connect:
-        plan = rrt.build_rrt_connect(pe.start, pe.goal)
-    elif ao:
-        plan = rrt.build_ao_rrt(pe.start, pe.goal, t_prop, 350)
-    else:
-        plan = rrt.build_rrt(pe.start, pe.goal)
 
     run_time = time.time() - start_time
     # print 'plan:', plan
     print( 'run_time =', run_time)
 
-    # Setting dynamic_tree and dynamics_plan to True, animates the plot
-    # and plans respectively. it is a blocking call, and takes a while
-    # to finish, so use only with low samples.
-    pe.draw_env(show=False)
-    pe.draw_plan(plan, rrt,
-                 dynamic_tree=False,
-                 dynamic_plan=True,
-                 show=True)
-
+    
     return plan, rrt
 
 def main():

@@ -74,7 +74,6 @@ class Track():
 
         # Apply scaling
         coords *= scale
-        # coords[:, 1] *= -1
 
         # Center the track on the screen
         bbox_center_x = (np.min(coords[:, 0]) + np.max(coords[:, 0])) / 2
@@ -102,22 +101,23 @@ class Track():
     def goal_reached(self, hitbox:geom.Polygon):
         return self.goal.intersects(hitbox)
     
-    def sample_goal(self):
-        minx, miny, maxx, maxy = self.goal.bounds()
+    def sample_goal_state(self):
+        minx, miny, maxx, maxy = self.goal.bounds
         x = rand.uniform(minx, maxx)
         y = rand.uniform(miny, maxy)
         sample = geom.point.Point((x, y))
 
         if self.goal.contains(sample):
-            return sample
+            return Formula_E.car_state(x, y, self.start_ang)
         else:
             return self.sample_goal()
         
     def sample_state(self):
         x = rand.uniform(0, self.window_size[0])
         y = rand.uniform(0, self.window_size[1])
-
-        return geom.point.Point((x, y))
+        theta = rand.uniform(0, 2*np.pi)
+        
+        return Formula_E.car_state(x, y, theta)
         
 
 
