@@ -161,11 +161,16 @@ class RRT(object):
 
             x_rand = self.track.sample_state()
 
+            # # Sample random centerline point (not really better...)
+            # i_rand = rand.integers(0, len(self.track.centerline.coords))
+            # x_rand = shapely.get_point(self.track.centerline, i_rand)
+            # x_rand = Formula_E.Car_State(x_rand.xy[0], x_rand.xy[1], self.track.start_ang)
+
             c_rand = rand.random() * self.c_max
             y_rand = TreeNode(x_rand, c_rand)
 
             t_rand = rand.integers(1, self.T_prop_max)
-            u_rand = self.racecar.rand_control()
+            u_rand = self.racecar.rand_control(uniform=False)
             y_near, _ = self.T.find_nearest(y_rand, self.wx, self.wc) # FIXME Is this right??
 
             pi_new, x_new = self.propagate(y_near.state, u_rand, t_rand)
@@ -182,7 +187,9 @@ class RRT(object):
                     print(f"Shorter path found on iteration {k}. Length: {self.c_max}")
             else:
                 bad_moves += 1
-                if not bad_moves % 500: print(f"{bad_moves} moves rejected")
+
+            if not k % 500:
+                print(f"{bad_moves}/{k} samples rejected. {k/self.K*100}% Complete")
             
         if self.found_path:
             print(f"Path found! Length: {self.c_max}")   
@@ -255,7 +262,8 @@ class RRT(object):
         plt.grid(False)
 
         for e in self.T.edges:
-            shapely.plotting.plot_line(e[2], ax=ax, color='black')
+            shapely.plotting.plot_line(e[2], ax=ax, color='black', add_points=False)
+            # shapely.plotting.plot_line(e[2], ax=ax, color='black')
             # print(e[2])
             # input()
             

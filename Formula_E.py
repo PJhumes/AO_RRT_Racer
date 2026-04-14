@@ -25,7 +25,8 @@ class Formula_E():
         self.length = 5.02 *scale # m (scaled for drawing)
         self.width = 1.70 * scale # m (scaled for drawing)
         self.A = 1.1 # m^2 (frontal Area)
-        self.phi_max = 10 * np.pi/180 # rad
+        self.phi_max = 20 * np.pi/180 # rad
+        self.phi_sigma = 10 * np.pi/180
         self.scale = scale
 
         # Tires
@@ -57,9 +58,22 @@ class Formula_E():
         self.phi = 0
         self.dt = 1/framerate
 
-    def rand_control(self):
-        phi = rand.uniform(-self.phi_max, self.phi_max)
-        acc = rand.uniform(-1, 1) # Basically throttle/brake percentages, forces are taken care of in f_acc()
+    def rand_control(self, uniform=True):
+        if uniform:
+            phi = rand.uniform(-self.phi_max, self.phi_max)
+            acc = rand.uniform(-1, 1) # Basically throttle/brake percentages, forces are taken care of in f_acc()
+
+        else:
+            phi = rand.normal(loc=0, scale=self.phi_sigma, size=1)
+            phi = float(np.clip(phi, -self.phi_max, self.phi_max))
+
+            
+            acc_sub = rand.normal(loc=0, scale=.15, size=1)
+            if acc_sub >= 0:
+                acc = 1-float(np.clip(acc_sub, -1, 1))
+            else:
+                acc = -1-float(np.clip(acc_sub, -1, 1))
+
         return (acc, phi)
 
     def theta_dot(self, v, phi): return v/self.L*np.atan(phi)
