@@ -2,13 +2,13 @@
 import argparse
 import numpy as np
 from numpy.linalg import norm
-import matplotlib.pyplot as plotter
-from math import pi
+import matplotlib.pyplot as plt
 from collisions import PolygonEnvironment
 import time
 import Track_Collisions
 import Formula_E
 import shapely.geometry as geom
+import shapely.plotting
 
 
 # rand = np.random.default_rng(42)
@@ -23,7 +23,7 @@ class TreeNode:
     '''
     Class to hold node state and connectivity for building an RRT
     '''
-    def __init__(self, state, cost=0, parent=None):
+    def __init__(self, state:Formula_E.Car_State, cost=0, parent=None):
         self.state = state
         self.cost = cost
         self.children = []
@@ -58,7 +58,7 @@ class RRTSearchTree:
         min_d = 1000000
         nn = self.root
         for n_i in self.nodes:            
-            d = np.sqrt(wx*norm(y_query.state - n_i.state)**2 + wc*(y_query.cost - n_i.cost)**2)
+            d = np.sqrt(wx*norm(y_query.state.pos() - n_i.state.pos())**2 + wc*(y_query.cost - n_i.cost)**2)
             if d < min_d:
                 nn = n_i
                 min_d = d
@@ -107,7 +107,7 @@ class RRT(object):
         '''
         Initialize an RRT planning instance
         '''
-        self.track = Track_Collisions.Track(track, window_size)
+        self.track = Track_Collisions.Track(track, window_size=window_size)
         self.racecar = Formula_E.Formula_E(self.track.start[0], 
                                            self.track.start[1], 
                                            np.atan2(self.track.gradients[0,1], self.track.gradients[0,0]), 
@@ -127,28 +127,29 @@ class RRT(object):
         self.in_collision = self.track.is_colliding
 
         # Setup range limits
-        self.limits = np.array([[0,0], [window_size]]).T
-        print(self.limits)
+        self.limits = np.array([[0,0], window_size]).T
+        # print(self.limits)
 
 
         self.found_path = False
 
-    def build_ao_rrt(self, T_prop:int, c_max:float):
+    def build_ao_rrt(self):
         '''
         Build the rrt from init to goal
         Returns path to goal or None
         '''
-        self.T_prop = T_prop
         self.goal = self.track.goal
         self.init = self.racecar.state
-        self.c_max = c_max
+        self.c_max = self.track.centerline.length * 2
 
 
         y_min = TreeNode(None, np.inf)
-        y_init = TreeNode(np.array(self.init), 0)
+        y_init = TreeNode(self.racecar.state, 0)
 
         # Build tree and search
         self.T = RRTSearchTree(y_init)
+
+        bad_moves = 0
 
         # Sample and extend
         for k in range(self.K):
@@ -163,14 +164,14 @@ class RRT(object):
             c_rand = rand.random() * self.c_max
             y_rand = TreeNode(x_rand, c_rand)
 
-            t_rand = rand.integers(1, T_prop)
+            t_rand = rand.integers(1, self.T_prop_max)
             u_rand = self.racecar.rand_control()
             y_near, _ = self.T.find_nearest(y_rand, self.wx, self.wc) # FIXME Is this right??
 
             pi_new, x_new = self.propagate(y_near.state, u_rand, t_rand)
-            c_new = y_near.cost + self.traj_cost(pi_new)
 
             if pi_new:
+                c_new = y_near.cost + self.traj_cost(pi_new)
                 y_new = TreeNode(x_new, c_new)
                 self.T.add_node(y_new, y_near, pi_new)
                 if self.track.goal_reached(self.racecar.get_hitbox(x_new)):
@@ -179,6 +180,9 @@ class RRT(object):
                     self.found_path = True
                     self.prune()
                     print(f"Shorter path found on iteration {k}. Length: {self.c_max}")
+            else:
+                bad_moves += 1
+                if not bad_moves % 500: print(f"{bad_moves} moves rejected")
             
         if self.found_path:
             print(f"Path found! Length: {self.c_max}")   
@@ -207,10 +211,10 @@ class RRT(object):
 
         ### NOTE: This just rejects the whole sample if there is any collision
         ### NOTE: It also throws it out if grip is exceeded which can happen mid-path if we're close to the limit
-        pi = [x.pos]
-        for i in range(len(t)):
+        pi = [x.pos()]
+        for i in range(t):
             if self.racecar.check_grip(x.v, u[0], u[1]): # Friction Circle Check
-                f_long = self.racecar.f_acc(u[0], x) # Longitudinal forces -> function of v and acc
+                f_long, u_1 = self.racecar.f_acc(u[0], x) # Longitudinal forces -> function of v and acc
                 
                 self.racecar.accelerate(f_long, x) # Update car velocity (in x)
                 hitbox = self.racecar.update_pos(x) # Changes values in x
@@ -218,18 +222,23 @@ class RRT(object):
                 if self.track.is_colliding(hitbox):
                     return (None, None)
                 else:
-                    pi.append(x.pos)
+                    pi.append(x.pos())
                 
             else:
                 return (None, None)
-
+            
         pi = geom.linestring.LineString(pi)
+        # print(x.pos())
+
         return (pi, x)
     
     def traj_cost(self, pi:geom.LineString): # FIXME: update to include path line integral cost for optimizing TIME not distance.
         if not pi:
+            # print(f"pi new in cost: {pi}")
             return None
         else:
+            # print(f"pi new in cost: {pi}")
+
             return pi.length # polyline length is path cost for now.
 
     def fake_in_collision(self, q):
@@ -237,13 +246,24 @@ class RRT(object):
         We never collide with this function!
         '''
         return False
+    
+    def plot_track(self):
+        fig, ax = plt.subplots()
+        track_poly = geom.Polygon(shell=self.track.outer_coords, holes=[self.track.inner_coords])
+        # shapely.plotting.plot_polygon(track_poly, ax=ax, facecolor=(.5, .1, .1), edgecolor=(1, 1, 1), add_points=False)
+        shapely.plotting.plot_polygon(track_poly, ax=ax, add_points=False)
+        plt.grid(False)
+
+        for e in self.T.edges:
+            shapely.plotting.plot_line(e[2], ax=ax, color='black')
+            # print(e[2])
+            # input()
+            
+
+        plt.show()
 
 
 def test_rrt_env(num_samples=500, track='IMS', step_length=10, framerate=60, connect_prob=0.05):
-    # pe = PolygonEnvironment()
-    # pe.read_env(env)
-
-    # dims = len(pe.start)
     start_time = time.time()
 
     rrt = RRT(num_samples, track, step_length, framerate, connect_prob)
@@ -252,8 +272,10 @@ def test_rrt_env(num_samples=500, track='IMS', step_length=10, framerate=60, con
 
 
     run_time = time.time() - start_time
-    # print 'plan:', plan
+    print('plan:', plan)
     print( 'run_time =', run_time)
+
+    rrt.plot_track()
 
     
     return plan, rrt
@@ -262,77 +284,49 @@ def main():
     parser = argparse.ArgumentParser(description="Rapidly Exploring Random Trees")
 
     parser.add_argument(
-        "--env",
-        type=str,
-        default="./env0.txt",
-        help="Path to env file",
-    )
-
-    parser.add_argument(
         "-N", "--num_samples",
         type=int,
-        default=200,
+        default=500,
         help="Number of samples",
     )
 
     parser.add_argument(
-        "--epsilon",
-        type=float,
-        default=1,
-        help="Step length for straight line planner",
+        "--track",
+        type=str,
+        default="IMS",
+        help="Track name",
     )
 
     parser.add_argument(
-        "--goal_bias",
+        "--step_length",
+        type=int,
+        default=5,
+        help="Step length for propagation",
+    )
+
+    parser.add_argument(
+        "--framerate",
+        type=int,
+        default=60,
+        help="Framerate for simulation",
+    )
+
+    parser.add_argument(
+        "--connect_prob",
         type=float,
         default=0.05,
-        help="Probability that the sampler returns the goal",
-    )
-
-    parser.add_argument(
-        "--t_prop",
-        type=float,
-        default=0.05,
-        help="Probability that the sampler returns the goal",
-    )
-
-    parser.add_argument(
-        "--bidirectional",
-        action="store_true",
-        help="Use Bi-directional RRT-Connect (This takes precedance over connect)",
-    )
-
-    parser.add_argument(
-        "--connect",
-        action="store_true",
-        help="Use RRT-Connect (Ignored if bidirectional is set)",
-    )
-
-    parser.add_argument(
-        "--ao",
-        action="store_true",
-        help="Use AO-RRT",
-    )
-
-    parser.add_argument(
-        "--random",
-        action="store_true",
-        help="Set random start and goal positions",
+        help="Connection probability",
     )
 
     args = parser.parse_args()
     kwargs = {}
     kwargs['num_samples'] = args.num_samples
-    kwargs['step_length'] = args.epsilon
-    kwargs['env'] = args.env
-    kwargs['bidirection'] = args.bidirectional
-    kwargs['connect'] = args.connect
-    kwargs['ao'] = args.ao
-    kwargs['rand_map'] = args.random
-    kwargs['connect_prob'] = args.goal_bias
-    kwargs['t_prop'] = args.t_prop
+    kwargs['track'] = args.track
+    kwargs['step_length'] = args.step_length
+    kwargs['framerate'] = args.framerate
+    kwargs['connect_prob'] = args.connect_prob
     
-    test_rrt_env(**kwargs)
+    plan, rrt = test_rrt_env(**kwargs)
 
 if __name__== "__main__":
     main()

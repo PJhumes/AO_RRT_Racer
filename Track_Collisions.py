@@ -96,7 +96,7 @@ class Track():
         return coords, outer.tolist(), inner.tolist(), gradients, scale
 
     def is_colliding(self, hitbox:geom.Polygon):
-        return not self.prepared_track.contains(hitbox)
+        return not self.prepared.contains(hitbox)
     
     def goal_reached(self, hitbox:geom.Polygon):
         return self.goal.intersects(hitbox)
@@ -108,7 +108,7 @@ class Track():
         sample = geom.point.Point((x, y))
 
         if self.goal.contains(sample):
-            return Formula_E.car_state(x, y, self.start_ang)
+            return Formula_E.Car_State(x, y, self.start_ang)
         else:
             return self.sample_goal()
         
@@ -117,7 +117,7 @@ class Track():
         y = rand.uniform(0, self.window_size[1])
         theta = rand.uniform(0, 2*np.pi)
         
-        return Formula_E.car_state(x, y, theta)
+        return Formula_E.Car_State(x, y, theta)
         
 
 

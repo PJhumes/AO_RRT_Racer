@@ -25,7 +25,7 @@ class Formula_E():
         self.length = 5.02 *scale # m (scaled for drawing)
         self.width = 1.70 * scale # m (scaled for drawing)
         self.A = 1.1 # m^2 (frontal Area)
-        self.phi_max = 25 * np.pi/180 # rad
+        self.phi_max = 10 * np.pi/180 # rad
         self.scale = scale
 
         # Tires
@@ -49,7 +49,7 @@ class Formula_E():
         self.f_max = self.mu * self.m
         self.brake_max = -self.f_max # Assume the brakes are capable of locking tires at any point
         self.v_cross = self.P_max/self.f_max
-        self.v_max = 320 / 3.6 # kph -> m/s
+        # self.v_max = 320 / 3.6 # kph -> m/s
         
 
         # Initial Conditions:
@@ -121,22 +121,22 @@ class Formula_E():
             # Automatically reduces power to traction limit if necessary
             if state.v == 0:
                 f_acc = self.mu*self.m * a
-                pedal_pos = a
+                a2 = a
             else:
                 f_acc = min(self.mu*self.f_n(state.v), abs(self.P_max * a / state.v))
-                pedal_pos = f_acc * state.v / self.P_max
+                a2 = f_acc * state.v / self.P_max
         else:
             # This feels a little weird... It's a percent of the available grip not a percent of the 
             # available brake pressure like a driver would normally have. Probably fine, right??
             if state.v > 0:
                 f_acc = self.mu*self.f_n(state.v) * a
-                pedal_pos = -a
+                a2 = -a
             else:
                 f_acc = 0
-                pedal_pos = -a
+                a2 = -a
                 state.v = 0
             
-        return f_acc - self.f_drag(state.v), pedal_pos
+        return f_acc - self.f_drag(state.v), a2
     
     def f_turn(self, v, phi): return self.m * v**2 / self.turning_circle(phi)
 
@@ -152,7 +152,7 @@ class Formula_E():
 
     def f_motor(self, v): return min(self.f_max_grip(v), self.P/v)
 
-    def f_req(self, v, acc, phi): return np.linalg.norm([self.f_acc(acc), self.f_turn(v, phi)])
+    def f_req(self, v, acc, phi): return np.linalg.norm([self.f_acc(acc)[0], self.f_turn(v, phi)])
 
     def scale_control(self, v, acc, phi):
         f_gas, f_turn = self.calc_forces(v, acc, phi)
