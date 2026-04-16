@@ -1,6 +1,5 @@
 import warnings
 warnings.filterwarnings("ignore", message="pkg_resources is deprecated")
-import pygame 
 import shapely.geometry as geom
 from shapely.prepared import prep
 import numpy as np
@@ -116,8 +115,9 @@ class Track():
         x = rand.uniform(0, self.window_size[0])
         y = rand.uniform(0, self.window_size[1])
         theta = rand.uniform(0, 2*np.pi)
+        proj = self.centerline.project(geom.Point((x, y)))
         
-        return Formula_E.Car_State(x, y, theta)
+        return Formula_E.Car_State(x, y, theta, proj)
         
 
 

@@ -3,17 +3,21 @@ import numpy as np
 rand = np.random.default_rng()
 
 class Car_State():
-        def __init__(self, x, y, theta, v=0):
+        def __init__(self, x, y, theta, v=0, proj=0):
             self.x = x
             self.y = y
             self.theta = theta
+            self.proj = proj
             self.v = v
 
         def pos(self):
             return np.array([self.x, self.y])
         
         def copy(self):
-            return Car_State(self.x, self.y, self.theta, self.v)
+            return Car_State(self.x, self.y, self.theta, self.v, self.proj)
+        
+        def __str__(self):
+            return str((self.pos(), self.proj))
 
 
 class Formula_E():

@@ -3,12 +3,13 @@ import argparse
 import numpy as np
 from numpy.linalg import norm
 import matplotlib.pyplot as plt
-from collisions import PolygonEnvironment
+# plt.ion()
 import time
 import Track_Collisions
 import Formula_E
 import shapely.geometry as geom
 import shapely.plotting
+import shapely
 
 
 # rand = np.random.default_rng(42)
@@ -50,18 +51,24 @@ class RRTSearchTree:
         self.nodes = [self.root]
         self.edges = []
 
-    def find_nearest(self, y_query, wx, wc): # FIXME: Make sure this is updated as shown in part IV of the paper.
+    def find_nearest(self, y_query, wx, wc, wt): # FIXME: Make sure this is updated as shown in part IV of the paper.
         '''
         Find node in tree closets to s_query
         returns - (nearest node, dist to nearest node)
         '''
-        min_d = 1000000
+        min_d = np.inf
         nn = self.root
         for n_i in self.nodes:            
-            d = np.sqrt(wx*norm(y_query.state.pos() - n_i.state.pos())**2 + wc*(y_query.cost - n_i.cost)**2)
+            d = np.sqrt(
+                        # wx*norm(y_query.state.pos() - n_i.state.pos())**2 
+                        + wc*(y_query.cost - n_i.cost)**2
+                        + wt*(y_query.state.proj - n_i.state.proj)**2
+                        )
             if d < min_d:
                 nn = n_i
                 min_d = d
+        # print(min_d)
+        # input()
         return (nn, min_d)
 
     def add_node(self, node:TreeNode, parent:TreeNode, traj:np.array):
@@ -121,17 +128,19 @@ class RRT(object):
         self.connect_prob = connect_prob
 
         # AO_RRT weight parameters
-        self.wx = 1
+        self.wx = 10
         self.wc = 1
+        self.wt = 1
 
         self.in_collision = self.track.is_colliding
 
         # Setup range limits
         self.limits = np.array([[0,0], window_size]).T
-        # print(self.limits)
-
 
         self.found_path = False
+
+        self.fig, self.ax = plt.subplots()
+
 
     def build_ao_rrt(self):
         '''
@@ -140,7 +149,7 @@ class RRT(object):
         '''
         self.goal = self.track.goal
         self.init = self.racecar.state
-        self.c_max = self.track.centerline.length * 2
+        self.c_max = self.track.centerline.length * 10
 
 
         y_min = TreeNode(None, np.inf)
@@ -171,7 +180,7 @@ class RRT(object):
 
             t_rand = rand.integers(1, self.T_prop_max)
             u_rand = self.racecar.rand_control(uniform=False)
-            y_near, _ = self.T.find_nearest(y_rand, self.wx, self.wc) # FIXME Is this right??
+            y_near, _ = self.T.find_nearest(y_rand, self.wx, self.wc, self.wt) # FIXME Is this right??
 
             pi_new, x_new = self.propagate(y_near.state, u_rand, t_rand)
 
@@ -189,6 +198,7 @@ class RRT(object):
                 bad_moves += 1
 
             if not k % 500:
+                self.plot_track()
                 print(f"{bad_moves}/{k} samples rejected. {k/self.K*100}% Complete")
             
         if self.found_path:
@@ -241,12 +251,19 @@ class RRT(object):
     
     def traj_cost(self, pi:geom.LineString): # FIXME: update to include path line integral cost for optimizing TIME not distance.
         if not pi:
-            # print(f"pi new in cost: {pi}")
             return None
         else:
-            # print(f"pi new in cost: {pi}")
+            # Cost as the ratio of the planned path length to the centerline length.
+            dist_start = self.track.centerline.project(geom.Point(pi.coords[0]))
+            dist_end = self.track.centerline.project(geom.Point(pi.coords[-1]))
 
-            return pi.length # polyline length is path cost for now.
+            actual_length = pi.length
+            projected_length = abs(dist_end - dist_start)
+            if projected_length == 0:
+                projected_length = 1
+
+            # return pi.length/projected_length 
+            return pi.length # Path length minimization. # FIXME
 
     def fake_in_collision(self, q):
         '''
@@ -255,20 +272,19 @@ class RRT(object):
         return False
     
     def plot_track(self):
-        fig, ax = plt.subplots()
+        self.ax.clear()
         track_poly = geom.Polygon(shell=self.track.outer_coords, holes=[self.track.inner_coords])
         # shapely.plotting.plot_polygon(track_poly, ax=ax, facecolor=(.5, .1, .1), edgecolor=(1, 1, 1), add_points=False)
-        shapely.plotting.plot_polygon(track_poly, ax=ax, add_points=False)
+        shapely.plotting.plot_polygon(track_poly, ax=self.ax, add_points=False)
         plt.grid(False)
 
         for e in self.T.edges:
-            shapely.plotting.plot_line(e[2], ax=ax, color='black', add_points=False)
+            shapely.plotting.plot_line(e[2], ax=self.ax, color='black', add_points=False)
             # shapely.plotting.plot_line(e[2], ax=ax, color='black')
             # print(e[2])
             # input()
             
-
-        plt.show()
+        plt.pause(0.2)
 
 
 def test_rrt_env(num_samples=500, track='IMS', step_length=10, framerate=60, connect_prob=0.05):
@@ -283,7 +299,7 @@ def test_rrt_env(num_samples=500, track='IMS', step_length=10, framerate=60, con
     print('plan:', plan)
     print( 'run_time =', run_time)
 
-    rrt.plot_track()
+    plt.show() # Keep the plot open after finishing
 
     
     return plan, rrt
