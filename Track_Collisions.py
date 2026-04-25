@@ -33,6 +33,8 @@ class Track():
         self.start = self.centerline.coords[0]
         self.start_ang = np.atan2(self.gradients[0,1], self.gradients[0,0])
 
+        print(f"Track length (m): {self.centerline.length / self.scale}")
+
         self.goal = geom.Polygon([self.inner_coords[-1], self.inner_coords[-2], self.outer_coords[-2], self.outer_coords[-1]])
 
     def load_track(self, track_name:str, angle=0.):
@@ -104,18 +106,20 @@ class Track():
         minx, miny, maxx, maxy = self.goal.bounds
         x = rand.uniform(minx, maxx)
         y = rand.uniform(miny, maxy)
-        sample = geom.point.Point((x, y))
+        proj = self.centerline.project(geom.Point((x, y)))
 
-        if self.goal.contains(sample):
-            return Formula_E.Car_State(x, y, self.start_ang)
+        if self.goal.contains(geom.point.Point((x, y))):
+            return Formula_E.Car_State(x, y, self.start_ang, proj)
         else:
-            return self.sample_goal()
+            return self.sample_goal_state()
         
     def sample_state(self):
         x = rand.uniform(0, self.window_size[0])
         y = rand.uniform(0, self.window_size[1])
         theta = rand.uniform(0, 2*np.pi)
         proj = self.centerline.project(geom.Point((x, y)))
+        # print(f"proj: {proj}")
+        # input()
         
         return Formula_E.Car_State(x, y, theta, proj)
         

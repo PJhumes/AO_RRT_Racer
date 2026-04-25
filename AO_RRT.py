@@ -60,9 +60,10 @@ class RRTSearchTree:
         nn = self.root
         for n_i in self.nodes:            
             d = np.sqrt(
-                        # wx*norm(y_query.state.pos() - n_i.state.pos())**2 
                         + wc*(y_query.cost - n_i.cost)**2
-                        + wt*(y_query.state.proj - n_i.state.proj)**2
+                        + wx*(y_query.state.x - n_i.state.x)**2
+                        + wx*(y_query.state.y - n_i.state.y)**2
+                        + wt*(y_query.state.proj -n_i.state.proj)**2
                         )
             if d < min_d:
                 nn = n_i
@@ -163,12 +164,12 @@ class RRT(object):
         # Sample and extend
         for k in range(self.K):
 
-            # if rand.random() < self.connect_prob: # Goal Bias?? IDK if AO_RRT uses this
-            #     x_rand = self.track.sample_goal_state()
-            # else:
-            #     x_rand = self.track.sample_state()
+            if rand.random() < self.connect_prob: # Goal Bias?? IDK if AO_RRT uses this
+                x_rand = self.track.sample_goal_state()
+            else:
+                x_rand = self.track.sample_state()
 
-            x_rand = self.track.sample_state()
+            # x_rand = self.track.sample_state()
 
             # # Sample random centerline point (not really better...)
             # i_rand = rand.integers(0, len(self.track.centerline.coords))
@@ -179,13 +180,13 @@ class RRT(object):
             y_rand = TreeNode(x_rand, c_rand)
 
             t_rand = rand.integers(1, self.T_prop_max)
-            u_rand = self.racecar.rand_control(uniform=False)
-            y_near, _ = self.T.find_nearest(y_rand, self.wx, self.wc, self.wt) # FIXME Is this right??
+            u_rand = self.racecar.rand_control(uniform=True)
+            y_near, _ = self.T.find_nearest(y_rand, self.wx, self.wc, self.wt) # TODO Update to use time-valued cost
 
             pi_new, x_new = self.propagate(y_near.state, u_rand, t_rand)
 
             if pi_new:
-                c_new = y_near.cost + self.traj_cost(pi_new)
+                c_new = y_near.cost + self.traj_cost(pi_new) # TODO Update with time-valued cost function
                 y_new = TreeNode(x_new, c_new)
                 self.T.add_node(y_new, y_near, pi_new)
                 if self.track.goal_reached(self.racecar.get_hitbox(x_new)):
@@ -253,17 +254,17 @@ class RRT(object):
         if not pi:
             return None
         else:
-            # Cost as the ratio of the planned path length to the centerline length.
-            dist_start = self.track.centerline.project(geom.Point(pi.coords[0]))
-            dist_end = self.track.centerline.project(geom.Point(pi.coords[-1]))
+            # # Cost as the ratio of the planned path length to the centerline length.
+            # dist_start = self.track.centerline.project(geom.Point(pi.coords[0]))
+            # dist_end = self.track.centerline.project(geom.Point(pi.coords[-1]))
 
-            actual_length = pi.length
-            projected_length = abs(dist_end - dist_start)
-            if projected_length == 0:
-                projected_length = 1
+            # actual_length = pi.length
+            # projected_length = abs(dist_end - dist_start)
+            # if projected_length == 0:
+            #     projected_length = 1
 
             # return pi.length/projected_length 
-            return pi.length # Path length minimization. # FIXME
+            return pi.length # Path length minimization. # FIXME. This is distance-minimizing
 
     def fake_in_collision(self, q):
         '''
