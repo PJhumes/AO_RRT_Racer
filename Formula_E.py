@@ -30,7 +30,7 @@ class Formula_E():
         self.width = 1.70 * scale # m (scaled for drawing)
         self.A = 1.1 # m^2 (frontal Area)
         self.phi_max = 20 * np.pi/180 # rad
-        self.phi_sigma = 10 * np.pi/180
+        self.phi_sigma = 4 * np.pi/180
         self.scale = scale
 
         # Tires

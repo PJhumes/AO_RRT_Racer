@@ -57,7 +57,7 @@ class RRTSearchTree:
         returns - (nearest node, dist to nearest node)
         '''
         min_d = np.inf
-        nn = self.root
+        nn = [self.root]
         for n_i in self.nodes:            
             d = np.sqrt(
                         + wc*(y_query.cost - n_i.cost)**2
@@ -66,8 +66,12 @@ class RRTSearchTree:
                         + wt*(y_query.state.proj -n_i.state.proj)**2
                         )
             if d < min_d:
-                nn = n_i
                 min_d = d
+                nn.append(n_i)
+
+                if len(nn) > 3: # FIXME Hardcoded for 3 nearest neighbors
+                    nn.pop(0)
+
         # print(min_d)
         # input()
         return (nn, min_d)
@@ -127,6 +131,7 @@ class RRT(object):
         self.K = num_samples
         self.T_prop_max = ts_max
         self.connect_prob = connect_prob
+        self.visualize = True                # FIXME: Hardcoded value
 
         # AO_RRT weight parameters
         self.wx = 10
@@ -138,7 +143,7 @@ class RRT(object):
         # Setup range limits
         self.limits = np.array([[0,0], window_size]).T
 
-        self.found_path = False
+        self.path = None
 
         self.fig, self.ax = plt.subplots()
 
@@ -180,30 +185,34 @@ class RRT(object):
             y_rand = TreeNode(x_rand, c_rand)
 
             t_rand = rand.integers(1, self.T_prop_max)
-            u_rand = self.racecar.rand_control(uniform=True)
-            y_near, _ = self.T.find_nearest(y_rand, self.wx, self.wc, self.wt) # TODO Update to use time-valued cost
+            u_rand = self.racecar.rand_control(uniform=False)
+            ys_near, _ = self.T.find_nearest(y_rand, self.wx, self.wc, self.wt) # TODO Update to use time-valued cost
 
-            pi_new, x_new = self.propagate(y_near.state, u_rand, t_rand)
+            for y_near in ys_near:
+                pi_new, x_new = self.propagate(y_near.state, u_rand, t_rand)
 
-            if pi_new:
-                c_new = y_near.cost + self.traj_cost(pi_new) # TODO Update with time-valued cost function
-                y_new = TreeNode(x_new, c_new)
-                self.T.add_node(y_new, y_near, pi_new)
-                if self.track.goal_reached(self.racecar.get_hitbox(x_new)):
-                    y_min = y_new
-                    self.c_max = y_min.cost
-                    self.found_path = True
-                    self.prune()
-                    print(f"Shorter path found on iteration {k}. Length: {self.c_max}")
-            else:
-                bad_moves += 1
+                if pi_new:
+                    c_new = y_near.cost + self.traj_cost(pi_new) # TODO Update with time-valued cost function
+                    y_new = TreeNode(x_new, c_new)
+                    self.T.add_node(y_new, y_near, pi_new)
+                    if self.track.goal_reached(self.racecar.get_hitbox(x_new)):
+                        y_min = y_new
+                        self.c_max = y_min.cost
+                        self.path = self.T.get_back_path(y_min)
+                        self.prune()
+                        if self.visualize:
+                            self.plot_track()
+                        print(f"Shorter path found on iteration {k}. Length: {self.c_max / self.track.scale}")
+                else:
+                    bad_moves += 1
 
             if not k % 500:
-                self.plot_track()
+                if self.visualize:
+                    self.plot_track()
                 print(f"{bad_moves}/{k} samples rejected. {k/self.K*100}% Complete")
             
-        if self.found_path:
-            print(f"Path found! Length: {self.c_max}")   
+        if self.path != None:
+            print(f"Path found! Length: {self.c_max / self.track.scale}")   
             print(f"Nodes in Tree: {len(self.T.nodes)}")  
             return self.T.get_back_path(y_min)
         else:
@@ -281,9 +290,10 @@ class RRT(object):
 
         for e in self.T.edges:
             shapely.plotting.plot_line(e[2], ax=self.ax, color='black', add_points=False)
-            # shapely.plotting.plot_line(e[2], ax=ax, color='black')
-            # print(e[2])
-            # input()
+
+        if self.path:
+            line = geom.LineString([geom.Point(e.pos()) for e in self.path])
+            shapely.plotting.plot_line(line, ax=self.ax, color='red', linewidth=0.75, add_points=False)
             
         plt.pause(0.2)
 
@@ -297,7 +307,7 @@ def test_rrt_env(num_samples=500, track='IMS', step_length=10, framerate=60, con
 
 
     run_time = time.time() - start_time
-    print('plan:', plan)
+    # print('plan:', plan)
     print( 'run_time =', run_time)
 
     plt.show() # Keep the plot open after finishing
