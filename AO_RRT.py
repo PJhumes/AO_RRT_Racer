@@ -115,7 +115,7 @@ class RRT(object):
     '''
     Rapidly-Exploring Random Tree Planner
     '''
-    def __init__(self, num_samples:int, track:str, ts_max:int, framerate=60, connect_prob=0.05, window_size=(1200, 800)):
+    def __init__(self, num_samples:int, track:str, ts_max:int, uniform=False, framerate=60, connect_prob=0.05, window_size=(1200, 800), visualize=False):
         '''
         Initialize an RRT planning instance
         '''
@@ -131,7 +131,8 @@ class RRT(object):
         self.K = num_samples
         self.T_prop_max = ts_max
         self.connect_prob = connect_prob
-        self.visualize = True                # FIXME: Hardcoded value
+        self.visualize = visualize
+        self.uniform = uniform
 
         # AO_RRT weight parameters
         self.wx = 10
@@ -185,7 +186,7 @@ class RRT(object):
             y_rand = TreeNode(x_rand, c_rand)
 
             t_rand = rand.integers(1, self.T_prop_max)
-            u_rand = self.racecar.rand_control(uniform=False)
+            u_rand = self.racecar.rand_control(uniform=self.uniform)
             ys_near, _ = self.T.find_nearest(y_rand, self.wx, self.wc, self.wt) # TODO Update to use time-valued cost
 
             for y_near in ys_near:
@@ -195,7 +196,7 @@ class RRT(object):
                     c_new = y_near.cost + self.traj_cost(pi_new) # TODO Update with time-valued cost function
                     y_new = TreeNode(x_new, c_new)
                     self.T.add_node(y_new, y_near, pi_new)
-                    if self.track.goal_reached(self.racecar.get_hitbox(x_new)):
+                    if self.track.goal_reached(self.racecar.get_hitbox(x_new)) and y_new.cost < y_min.cost:
                         y_min = y_new
                         self.c_max = y_min.cost
                         self.path = self.T.get_back_path(y_min)
@@ -213,12 +214,14 @@ class RRT(object):
             
         if self.path != None:
             print(f"Path found! Length: {self.c_max / self.track.scale}")   
-            print(f"Nodes in Tree: {len(self.T.nodes)}")  
+            print(f"Nodes in Tree: {len(self.T.nodes)}") 
+            self.plot_track() 
             return self.T.get_back_path(y_min)
         else:
             print("No path found.")
+            self.plot_track() 
             return None
-
+        
 
     def prune(self):
         for n in self.T.nodes:
@@ -248,6 +251,9 @@ class RRT(object):
                 
                 if self.track.is_colliding(hitbox):
                     return (None, None)
+                elif self.track.goal_reached(hitbox): # Unlikely, but prevents overshooting the goal.
+                    pi.append(x.pos())
+                    break
                 else:
                     pi.append(x.pos())
                 
@@ -293,15 +299,15 @@ class RRT(object):
 
         if self.path:
             line = geom.LineString([geom.Point(e.pos()) for e in self.path])
-            shapely.plotting.plot_line(line, ax=self.ax, color='red', linewidth=0.75, add_points=False)
+            shapely.plotting.plot_line(line, ax=self.ax, color='red', linewidth=1.2, add_points=False)
             
         plt.pause(0.2)
 
 
-def test_rrt_env(num_samples=500, track='IMS', step_length=10, framerate=60, connect_prob=0.05):
+def test_rrt_env(num_samples=500, track='IMS', uniform=False, visualize=False, step_length=10, framerate=60, connect_prob=0.05):
     start_time = time.time()
 
-    rrt = RRT(num_samples, track, step_length, framerate, connect_prob)
+    rrt = RRT(num_samples, track, step_length, uniform, framerate, connect_prob, visualize=visualize)
     
     plan = rrt.build_ao_rrt()
 
@@ -353,12 +359,26 @@ def main():
         help="Connection probability",
     )
 
+    parser.add_argument(
+        "--uniform", "-u",
+        action="store_true",
+        help="Force Uniform control sampling",
+    )
+
+    parser.add_argument(
+        "--visualize", "-v",
+        action="store_true",
+        help="Visualize track, tree, and plan",
+    )
+
     args = parser.parse_args()
     kwargs = {}
     kwargs['num_samples'] = args.num_samples
     kwargs['track'] = args.track
     kwargs['step_length'] = args.step_length
     kwargs['framerate'] = args.framerate
+    kwargs['uniform'] = args.uniform
+    kwargs['visualize'] = args.visualize
     kwargs['connect_prob'] = args.connect_prob
     
     plan, rrt = test_rrt_env(**kwargs)
