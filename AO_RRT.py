@@ -60,10 +60,10 @@ class RRTSearchTree:
         nn = [self.root]
         for n_i in self.nodes:            
             d = np.sqrt(
-                        wx * ((y_query.state.x - n_i.state.x) / self.x_range)**2
-                        + wx * ((y_query.state.y - n_i.state.y) / self.y_range)**2
-                        + wc * ((y_query.cost   - n_i.cost)      / self.c_range)**2
-                        + wt * ((y_query.state.proj - n_i.state.proj) / self.t_range)**2
+                          wx * (y_query.state.x - n_i.state.x)**2
+                        + wx * (y_query.state.y - n_i.state.y)**2
+                        + wc * (y_query.cost   - n_i.cost)**2
+                        + wt * (y_query.state.proj - n_i.state.proj)**2
                         )
             if d < min_d:
                 min_d = d
@@ -135,15 +135,15 @@ class RRT(object):
         self.uniform = uniform
 
         # Expected ranges for normalization
-        self.x_range = window_size[0]
-        self.y_range = window_size[1]
-        self.c_range = self.track.centerline.length * 10 / self.racecar.framerate
-        self.t_range = self.track.centerline.length
+        # self.x_range = window_size[0]
+        # self.y_range = window_size[1]
+        # self.c_range = self.track.centerline.length * 10 / self.racecar.framerate
+        # self.t_range = self.track.centerline.length
 
         # AO_RRT weight parameters
         self.wx = 1
         self.wc = 2
-        self.wt = 1
+        self.wt = 10
 
         self.in_collision = self.track.is_colliding
 
