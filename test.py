@@ -1,13 +1,7 @@
-import matplotlib.pyplot as plt
-import shapely.plotting
-from shapely.geometry import Polygon
+import pandas as pd
+df = pd.read_csv('track_info/tracks/IMS.csv', comment='#', names=['x_m', 'y_m', 'w_tr_right_m', 'w_tr_left_m'])
 
-# Define a square with a square hole
-polygon = Polygon(
-    shell=[(0, 0), (10, 0), (10, 10), (0, 10)],
-    holes=[[(2, 2), (2, 8), (8, 8), (8, 2)]]
-)
+df['x_m'] = df['x_m'] * .2
+df['y_m'] = df['y_m'] * .2
 
-fig, ax = plt.subplots()
-shapely.plotting.plot_polygon(polygon, ax=ax, facecolor='lightblue', edgecolor='blue')
-plt.show()
+df.to_csv('track_info/tracks/IMS_Shrunk.csv', index=False)
