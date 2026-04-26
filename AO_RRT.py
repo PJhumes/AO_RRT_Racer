@@ -60,10 +60,10 @@ class RRTSearchTree:
         nn = [self.root]
         for n_i in self.nodes:            
             d = np.sqrt(
-                        + wc*(y_query.cost - n_i.cost)**2
-                        + wx*(y_query.state.x - n_i.state.x)**2
-                        + wx*(y_query.state.y - n_i.state.y)**2
-                        + wt*(y_query.state.proj -n_i.state.proj)**2
+                        wx * ((y_query.state.x - n_i.state.x) / self.x_range)**2
+                        + wx * ((y_query.state.y - n_i.state.y) / self.y_range)**2
+                        + wc * ((y_query.cost   - n_i.cost)      / self.c_range)**2
+                        + wt * ((y_query.state.proj - n_i.state.proj) / self.t_range)**2
                         )
             if d < min_d:
                 min_d = d
@@ -134,9 +134,15 @@ class RRT(object):
         self.visualize = visualize
         self.uniform = uniform
 
+        # Expected ranges for normalization
+        self.x_range = window_size[0]
+        self.y_range = window_size[1]
+        self.c_range = self.track.centerline.length * 10 / self.racecar.framerate
+        self.t_range = self.track.centerline.length
+
         # AO_RRT weight parameters
-        self.wx = 10
-        self.wc = 1
+        self.wx = 1
+        self.wc = 2
         self.wt = 1
 
         self.in_collision = self.track.is_colliding
@@ -190,10 +196,10 @@ class RRT(object):
             ys_near, _ = self.T.find_nearest(y_rand, self.wx, self.wc, self.wt) # TODO Update to use time-valued cost
 
             for y_near in ys_near:
-                pi_new, x_new = self.propagate(y_near.state, u_rand, t_rand)
+                pi_new, x_new, steps = self.propagate(y_near.state, u_rand, t_rand)
 
                 if pi_new:
-                    c_new = y_near.cost + self.traj_cost(pi_new) # TODO Update with time-valued cost function
+                    c_new = y_near.cost + self.traj_cost(pi_new, steps) # TODO Update with time-valued cost function
                     y_new = TreeNode(x_new, c_new)
                     self.T.add_node(y_new, y_near, pi_new)
                     if self.track.goal_reached(self.racecar.get_hitbox(x_new)) and y_new.cost < y_min.cost:
@@ -242,6 +248,9 @@ class RRT(object):
         ### NOTE: This just rejects the whole sample if there is any collision
         ### NOTE: It also throws it out if grip is exceeded which can happen mid-path if we're close to the limit
         pi = [x.pos()]
+
+        steps_taken = 0
+
         for i in range(t):
             if self.racecar.check_grip(x.v, u[0], u[1]): # Friction Circle Check
                 f_long, u_1 = self.racecar.f_acc(u[0], x) # Longitudinal forces -> function of v and acc
@@ -250,23 +259,25 @@ class RRT(object):
                 hitbox = self.racecar.update_pos(x) # Changes values in x
                 
                 if self.track.is_colliding(hitbox):
-                    return (None, None)
+                    return (None, None, None)
                 elif self.track.goal_reached(hitbox): # Unlikely, but prevents overshooting the goal.
                     pi.append(x.pos())
+                    steps_taken += 1
                     break
                 else:
                     pi.append(x.pos())
+                    steps_taken += 1
                 
             else:
-                return (None, None)
+                return (None, None, None)
             
         pi = geom.linestring.LineString(pi)
         # print(x.pos())
 
-        return (pi, x)
+        return (pi, x, steps_taken)
     
-    def traj_cost(self, pi:geom.LineString): # FIXME: update to include path line integral cost for optimizing TIME not distance.
-        if not pi:
+    def traj_cost(self, pi:geom.LineString, steps: int, alpha = 0.001): # FIXME: update to include path line integral cost for optimizing TIME not distance.
+        if not pi or steps is None:
             return None
         else:
             # # Cost as the ratio of the planned path length to the centerline length.
@@ -279,7 +290,14 @@ class RRT(object):
             #     projected_length = 1
 
             # return pi.length/projected_length 
-            return pi.length # Path length minimization. # FIXME. This is distance-minimizing
+            time_cost = steps / self.racecar.framerate
+
+            deviation = np.mean([
+                self.track.centerline.distance(geom.Point(p))
+                for p in pi.coords
+                ])
+
+            return time_cost + alpha * deviation
 
     def fake_in_collision(self, q):
         '''
