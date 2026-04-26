@@ -60,10 +60,10 @@ class RRTSearchTree:
         nn = [self.root]
         for n_i in self.nodes:            
             d = np.sqrt(
-                        wx * ((y_query.state.x - n_i.state.x) / self.x_range)**2
-                        + wx * ((y_query.state.y - n_i.state.y) / self.y_range)**2
-                        + wc * ((y_query.cost   - n_i.cost)      / self.c_range)**2
-                        + wt * ((y_query.state.proj - n_i.state.proj) / self.t_range)**2
+                          wx * (y_query.state.x - n_i.state.x)**2
+                        + wx * (y_query.state.y - n_i.state.y)**2
+                        + wc * (y_query.cost   - n_i.cost)**2
+                        + wt * (y_query.state.proj - n_i.state.proj)**2
                         )
             if d < min_d:
                 min_d = d
@@ -135,15 +135,15 @@ class RRT(object):
         self.uniform = uniform
 
         # Expected ranges for normalization
-        self.x_range = window_size[0]
-        self.y_range = window_size[1]
-        self.c_range = self.track.centerline.length * 10 / self.racecar.framerate
-        self.t_range = self.track.centerline.length
+        # self.x_range = window_size[0]
+        # self.y_range = window_size[1]
+        # self.c_range = self.track.centerline.length * 10 / self.racecar.framerate
+        # self.t_range = self.track.centerline.length
 
         # AO_RRT weight parameters
         self.wx = 1
         self.wc = 2
-        self.wt = 1
+        self.wt = 5
 
         self.in_collision = self.track.is_colliding
 
@@ -290,14 +290,14 @@ class RRT(object):
             #     projected_length = 1
 
             # return pi.length/projected_length 
-            time_cost = steps / self.racecar.framerate
+            sec = steps / self.racecar.framerate # frames / frames/sec -> sec
+            v_avg = pi.length/sec # m / sec
+            if v_avg == 0:
+                return 0
 
-            deviation = np.mean([
-                self.track.centerline.distance(geom.Point(p))
-                for p in pi.coords
-                ])
+            ds = self.track.centerline.project(geom.Point(pi.coords[-1])) - self.track.centerline.project(geom.Point(pi.coords[0]))
 
-            return time_cost + alpha * deviation
+            return ds/v_avg
 
     def fake_in_collision(self, q):
         '''

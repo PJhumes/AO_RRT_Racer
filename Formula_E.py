@@ -61,6 +61,7 @@ class Formula_E():
         self.state = Car_State(x, y, theta, 0)
         self.phi = 0
         self.dt = 1/framerate
+        self.framerate = framerate
 
     def rand_control(self, uniform=True):
         if uniform:
