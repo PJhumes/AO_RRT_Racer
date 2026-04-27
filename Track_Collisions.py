@@ -20,6 +20,8 @@ class Track():
             angle = 90
         elif track_name == "Silverstone":
             angle = -80
+        elif track_name == "Schumacher":
+            angle = 100
 
         track_data = self.load_track(track_name, angle)
 
@@ -93,6 +95,15 @@ class Track():
 
         outer = coords + normals * df['w_tr_right_m'].values[:,None]
         inner = coords - normals * df['w_tr_left_m'].values[:,None]
+
+        # if track_name == "Schumacher": # Incomplete.
+        #     print("open-loop track")
+        #     print(inner[-1])
+        #     print(inner[1])
+
+        #     inner = np.vstack(([0, 0], inner, np.array([[self.window_size[0], self.window_size[1]], [0, self.window_size[1]]])))
+        #     outer = np.vstack(([0, 0], outer, np.array([[self.window_size[0], self.window_size[1]], [self.window_size[0], 0]])))
+
 
         return coords, outer.tolist(), inner.tolist(), gradients, scale
 

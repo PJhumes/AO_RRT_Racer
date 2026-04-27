@@ -97,7 +97,7 @@ class Formula_E():
         theta = state.theta
 
         r_matrix = np.array([[np.cos(theta), -np.sin(theta)],
-                          [np.sin(theta),  np.cos(theta)]])
+                             [np.sin(theta),  np.cos(theta)]])
 
         car_box =  [
                     r_matrix @ np.array([0,  self.width]) + state.pos(), # Rear left

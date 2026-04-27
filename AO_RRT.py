@@ -51,7 +51,7 @@ class RRTSearchTree:
         self.nodes = [self.root]
         self.edges = []
 
-    def find_nearest(self, y_query, wx, wc, wt): # FIXME: Make sure this is updated as shown in part IV of the paper.
+    def find_nearest(self, y_query, wx, wc, wt):
         '''
         Find node in tree closets to s_query
         returns - (nearest node, dist to nearest node)
@@ -69,7 +69,7 @@ class RRTSearchTree:
                 min_d = d
                 nn.append(n_i)
 
-                if len(nn) > 3: # FIXME Hardcoded for 3 nearest neighbors
+                if len(nn) > 2:
                     nn.pop(0)
 
         # print(min_d)
@@ -119,6 +119,7 @@ class RRT(object):
         '''
         Initialize an RRT planning instance
         '''
+        self.track_name = track
         self.track = Track_Collisions.Track(track, window_size=window_size)
         self.racecar = Formula_E.Formula_E(self.track.start[0], 
                                            self.track.start[1], 
@@ -142,8 +143,8 @@ class RRT(object):
 
         # AO_RRT weight parameters
         self.wx = 1
-        self.wc = 2
-        self.wt = 5
+        self.wc = 5
+        self.wt = 1
 
         self.in_collision = self.track.is_colliding
 
@@ -193,13 +194,13 @@ class RRT(object):
 
             t_rand = rand.integers(1, self.T_prop_max)
             u_rand = self.racecar.rand_control(uniform=self.uniform)
-            ys_near, _ = self.T.find_nearest(y_rand, self.wx, self.wc, self.wt) # TODO Update to use time-valued cost
+            ys_near, _ = self.T.find_nearest(y_rand, self.wx, self.wc, self.wt)
 
             for y_near in ys_near:
                 pi_new, x_new, steps = self.propagate(y_near.state, u_rand, t_rand)
 
                 if pi_new:
-                    c_new = y_near.cost + self.traj_cost(pi_new, steps) # TODO Update with time-valued cost function
+                    c_new = y_near.cost + self.traj_cost(pi_new, steps) 
                     y_new = TreeNode(x_new, c_new)
                     self.T.add_node(y_new, y_near, pi_new)
                     if self.track.goal_reached(self.racecar.get_hitbox(x_new)) and y_new.cost < y_min.cost:
@@ -208,24 +209,26 @@ class RRT(object):
                         self.path = self.T.get_back_path(y_min)
                         self.prune()
                         if self.visualize:
-                            self.plot_track()
+                            self.plot_track(draw_tree=True, draw_path=True)
                         print(f"Shorter path found on iteration {k}. Length: {self.c_max / self.track.scale}")
                 else:
                     bad_moves += 1
 
-            if not k % 500:
+            if not k % 250:
                 if self.visualize:
-                    self.plot_track()
+                    self.plot_track(draw_tree=True, draw_path=True)
+                    self.save_figure(k)
                 print(f"{bad_moves}/{k} samples rejected. {k/self.K*100}% Complete")
             
         if self.path != None:
             print(f"Path found! Length: {self.c_max / self.track.scale}")   
             print(f"Nodes in Tree: {len(self.T.nodes)}") 
-            self.plot_track() 
+            self.plot_track(draw_tree=True, draw_path=True) 
+            # self.animate_motion()
             return self.T.get_back_path(y_min)
         else:
             print("No path found.")
-            self.plot_track() 
+            self.plot_track(draw_tree=True) 
             return None
         
 
@@ -276,22 +279,12 @@ class RRT(object):
 
         return (pi, x, steps_taken)
     
-    def traj_cost(self, pi:geom.LineString, steps: int, alpha = 0.001): # FIXME: update to include path line integral cost for optimizing TIME not distance.
+    def traj_cost(self, pi:geom.LineString, steps: int, alpha = 0.001): 
         if not pi or steps is None:
             return None
         else:
-            # # Cost as the ratio of the planned path length to the centerline length.
-            # dist_start = self.track.centerline.project(geom.Point(pi.coords[0]))
-            # dist_end = self.track.centerline.project(geom.Point(pi.coords[-1]))
-
-            # actual_length = pi.length
-            # projected_length = abs(dist_end - dist_start)
-            # if projected_length == 0:
-            #     projected_length = 1
-
-            # return pi.length/projected_length 
             sec = steps / self.racecar.framerate # frames / frames/sec -> sec
-            v_avg = pi.length/sec # m / sec
+            v_avg = pi.length * self.track.scale / sec # m / sec
             if v_avg == 0:
                 return 0
 
@@ -305,21 +298,33 @@ class RRT(object):
         '''
         return False
     
-    def plot_track(self):
+    def plot_track(self, draw_tree=False, draw_path=False):
         self.ax.clear()
+        print(self.track.scale)
         track_poly = geom.Polygon(shell=self.track.outer_coords, holes=[self.track.inner_coords])
         # shapely.plotting.plot_polygon(track_poly, ax=ax, facecolor=(.5, .1, .1), edgecolor=(1, 1, 1), add_points=False)
         shapely.plotting.plot_polygon(track_poly, ax=self.ax, add_points=False)
         plt.grid(False)
 
-        for e in self.T.edges:
-            shapely.plotting.plot_line(e[2], ax=self.ax, color='black', add_points=False)
+        if draw_tree:
+            for e in self.T.edges:
+                shapely.plotting.plot_line(e[2], ax=self.ax, color='black', add_points=False)
 
-        if self.path:
+        if self.path and draw_path:
             line = geom.LineString([geom.Point(e.pos()) for e in self.path])
             shapely.plotting.plot_line(line, ax=self.ax, color='red', linewidth=1.2, add_points=False)
             
-        plt.pause(0.2)
+        plt.pause(0.05)
+
+    def save_figure(self, k):
+        self.fig.savefig(f"./figs/{self.track_name}_anim/{self.track_name}_{k}.png")
+
+    def animate_motion(self):
+        for i, v in enumerate(self.path):
+            self.plot_track(False, True)
+            shapely.plotting.plot_polygon(self.racecar.get_hitbox(v), ax=self.ax, color='blue', add_points=False)
+            self.save_figure(i)
+
 
 
 def test_rrt_env(num_samples=500, track='IMS', uniform=False, visualize=False, step_length=10, framerate=60, connect_prob=0.05):
