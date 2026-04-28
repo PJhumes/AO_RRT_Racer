@@ -1,13 +1,17 @@
-import matplotlib.pyplot as plt
-import shapely.plotting
-from shapely.geometry import Polygon
+from PIL import Image
+import glob
 
-# Define a square with a square hole
-polygon = Polygon(
-    shell=[(0, 0), (10, 0), (10, 10), (0, 10)],
-    holes=[[(2, 2), (2, 8), (8, 8), (8, 2)]]
-)
+# Create a list of image objects
+frames = []
+imgs = sorted(glob.glob("./figs/Schumacher_anim/*.png")) # Get and sort images
 
-fig, ax = plt.subplots()
-shapely.plotting.plot_polygon(polygon, ax=ax, facecolor='lightblue', edgecolor='blue')
-plt.show()
+for i in imgs:
+    new_frame = Image.open(i)
+    frames.append(new_frame)
+
+# Save into a GIF file
+frames[0].save('Schumacher_animation.gif', format='GIF',
+               append_images=frames[1:],
+               save_all=True,
+               duration=15, # Duration of each frame in milliseconds
+               loop=0)       # 0 means loop forever

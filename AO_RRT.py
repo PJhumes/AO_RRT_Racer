@@ -135,11 +135,6 @@ class RRT(object):
         self.visualize = visualize
         self.uniform = uniform
 
-        # Expected ranges for normalization
-        # self.x_range = window_size[0]
-        # self.y_range = window_size[1]
-        # self.c_range = self.track.centerline.length * 10 / self.racecar.framerate
-        # self.t_range = self.track.centerline.length
 
         # AO_RRT weight parameters
         self.wx = 1
@@ -182,13 +177,6 @@ class RRT(object):
             else:
                 x_rand = self.track.sample_state()
 
-            # x_rand = self.track.sample_state()
-
-            # # Sample random centerline point (not really better...)
-            # i_rand = rand.integers(0, len(self.track.centerline.coords))
-            # x_rand = shapely.get_point(self.track.centerline, i_rand)
-            # x_rand = Formula_E.Car_State(x_rand.xy[0], x_rand.xy[1], self.track.start_ang)
-
             c_rand = rand.random() * self.c_max
             y_rand = TreeNode(x_rand, c_rand)
 
@@ -210,21 +198,20 @@ class RRT(object):
                         self.prune()
                         if self.visualize:
                             self.plot_track(draw_tree=True, draw_path=True)
-                        print(f"Shorter path found on iteration {k}. Length: {self.c_max / self.track.scale}")
+                        print(f"Shorter path found on iteration {k}. Cost: {self.c_max / self.track.scale}")
                 else:
                     bad_moves += 1
 
             if not k % 250:
                 if self.visualize:
                     self.plot_track(draw_tree=True, draw_path=True)
-                    self.save_figure(k)
                 print(f"{bad_moves}/{k} samples rejected. {k/self.K*100}% Complete")
             
         if self.path != None:
             print(f"Path found! Length: {self.c_max / self.track.scale}")   
             print(f"Nodes in Tree: {len(self.T.nodes)}") 
-            self.plot_track(draw_tree=True, draw_path=True) 
             # self.animate_motion()
+            self.plot_track(draw_tree=True, draw_path=True) 
             return self.T.get_back_path(y_min)
         else:
             print("No path found.")
@@ -300,11 +287,11 @@ class RRT(object):
     
     def plot_track(self, draw_tree=False, draw_path=False):
         self.ax.clear()
-        print(self.track.scale)
         track_poly = geom.Polygon(shell=self.track.outer_coords, holes=[self.track.inner_coords])
         # shapely.plotting.plot_polygon(track_poly, ax=ax, facecolor=(.5, .1, .1), edgecolor=(1, 1, 1), add_points=False)
         shapely.plotting.plot_polygon(track_poly, ax=self.ax, add_points=False)
         plt.grid(False)
+        shapely.plotting.plot_polygon(self.goal, ax=self.ax, add_points=False, color="black")
 
         if draw_tree:
             for e in self.T.edges:

@@ -37,7 +37,13 @@ class Track():
 
         print(f"Track length (m): {self.centerline.length / self.scale}")
 
-        self.goal = geom.Polygon([self.inner_coords[-1], self.inner_coords[-2], self.outer_coords[-2], self.outer_coords[-1]])
+        if track_name == "Schumacher":
+            i_start = int(len(self.outer_coords)/2 - 2)
+            i_end = i_start + 4
+
+            self.goal = geom.Polygon(self.outer_coords[i_start:i_end])
+        else:  
+            self.goal = geom.Polygon([self.inner_coords[-1], self.inner_coords[-2], self.outer_coords[-2], self.outer_coords[-1]])
 
     def load_track(self, track_name:str, angle=0.):
         """
@@ -96,13 +102,15 @@ class Track():
         outer = coords + normals * df['w_tr_right_m'].values[:,None]
         inner = coords - normals * df['w_tr_left_m'].values[:,None]
 
-        # if track_name == "Schumacher": # Incomplete.
-        #     print("open-loop track")
-        #     print(inner[-1])
-        #     print(inner[1])
+        if track_name == "Schumacher": # Incomplete.
+            print("open-loop track")
 
-        #     inner = np.vstack(([0, 0], inner, np.array([[self.window_size[0], self.window_size[1]], [0, self.window_size[1]]])))
-        #     outer = np.vstack(([0, 0], outer, np.array([[self.window_size[0], self.window_size[1]], [self.window_size[0], 0]])))
+            outer = coords + normals * df['w_tr_right_m'].values[:,None]*3
+            inner = coords - normals * df['w_tr_left_m'].values[:,None]*3
+
+            # inner2 = np.vstack((inner[-3:-1, :], outer [-3:-1, :]))
+            outer = np.vstack((outer, np.flipud(inner)))
+            inner = np.array([[0, 0], [0, 1], [1, 1], [1, 0]])
 
 
         return coords, outer.tolist(), inner.tolist(), gradients, scale
