@@ -109,7 +109,7 @@ Object containing the dynamics and physical constraints of a Formula E Gen 3 Evo
 
 
 ## AO_RRT.py
-This is an incomplete implementation of the AO_RRT algorithm using the above objects. It is far from complete, but has the initialization how I initially think wouuld work well. Feel free to use it as a reference. Or fully discard it lol. We *should not* have to use Dr. Hermans' collisions.py file. the Track_Collisions should take care of that for us I think.
+This is an implementation of the AO_RRT algorithm using the above objects. It includes non-uniform (normal) sampling, support for most of TU Munich's Tracks (Notably not Suzuka because it is self-intersecting), and visualization options. It is *probably* asymptotically optimal as it will continue searching for a better path for as many samples as you give it, but the amount of time it would take to sample the right trajectory is impractically long. The main takeaway from this implementation is the limitations on using AO-RRT for long paths.
 
 
 
