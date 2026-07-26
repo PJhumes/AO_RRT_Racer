@@ -4,7 +4,7 @@
 
 This project was developed with Python 3.13 and requires numpy, matplotlib, and shapely. Once those dependencies are configured in your environment, simply use the CLI to tell the planner what parameters you would like to use. Default values are configured for each parameter so calling `python AO_RRT.py` with no arguments will result in the following call
 
-`python AO_RRT.py -N 500 --track IMS --step_length 10 --framerate 60 --connect_prob 0.5 -u=false -v=false`
+`python AO_RRT.py -N 1000 --track IMS --step_length 10 --framerate 60 --connect_prob 0.5 -u=false -v=false`
 
 * **-N** --num_samples: Number of samples to build tree
 * **--track:** Track name excluding ".csv" (see `track_info/tracks` for options)
