@@ -16,10 +16,6 @@ import shapely
 rand = np.random.default_rng()
 
 
-# _TRAPPED = 'trapped'
-# _ADVANCED = 'advanced'
-# _REACHED = 'reached'
-
 class TreeNode:
     '''
     Class to hold node state and connectivity for building an RRT
@@ -332,12 +328,14 @@ def test_rrt_env(num_samples=500, track='IMS', uniform=False, visualize=False, s
     return plan, rrt
 
 def main():
+    # Example call:
+    # python AO_RRT.py -N 1000 --track Schumacher --step_length 8 --framerate 120 --connect_prob 0.2 -u -v    
     parser = argparse.ArgumentParser(description="Rapidly Exploring Random Trees")
 
     parser.add_argument(
         "-N", "--num_samples",
         type=int,
-        default=500,
+        default=1000,
         help="Number of samples",
     )
 
@@ -351,7 +349,7 @@ def main():
     parser.add_argument(
         "--step_length",
         type=int,
-        default=5,
+        default=10,
         help="Step length for propagation",
     )
 
@@ -366,7 +364,7 @@ def main():
         "--connect_prob",
         type=float,
         default=0.05,
-        help="Connection probability",
+        help="Probability of sampling goal set",
     )
 
     parser.add_argument(

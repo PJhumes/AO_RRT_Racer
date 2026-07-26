@@ -1,5 +1,62 @@
 ﻿# AO_RRT_Racer
 
+## Quick Start Guide
+
+This project was developed with Python 3.13 and requires numpy, matplotlib, and shapely. Once those dependencies are configured in your environment, simply use the CLI to tell the planner what parameters you would like to use. Default values are configured for each parameter so calling `python AO_RRT.py` with no arguments will result in the following call
+
+`python AO_RRT.py -N 500 --track IMS --step_length 10 --framerate 60 --connect_prob 0.5 -u=false -v=false`
+
+* **-N** --num_samples: Number of samples to build tree
+* **--track:** Track name excluding ".csv" (see `track_info/tracks` for options)
+* **--step_length:** Max propagation timesteps
+* **--framerate:** Framerate for simulation
+* **--connect_prob:** Probability of sampling goal region
+* **-u:** Force Uniform Sampling (Default is Gaussian)
+* **-v:** Visualize tree growth
+
+*Note:* Suzuka is a figure-eight track that intersects itself with a bridge. Although this is a very cool feature, it breaks the simulator so unfortunately it cannot be used.
+
+
+Due to inherent limitations of using AO-RRT for this type of planning problem, it does not always find a solution without relatively large N. Reducing step_length also allows the planner to make tighter corners. All of the parameters also need to be tuned for each track, but based on our pilot testing, it should be possible to find a set of parameters that usually finds a solution. See `Final Project Report.pdf` for our complete writeup.
+
+## Summary of Results and Lessons Learned
+
+* Objective: Minimize total lap time directly.
+* Vehicle Dynamics: Kinodynamic nonholonomic bicycle model.
+* Constraints: Friction circle limits for tire grip.
+* Test Environments: IMS, Brands Hatch, Spa-Francorchamps.
+
+### Domain-Specific Modifications
+Standard AO-RRT was customized with four key enhancements to optimize performance:
+
+* Gaussian Control Sampling: Biases steering near zero and acceleration/braking near maximums.
+* Track-Progress Distance Metric: Uses centerline distance in lieu of standard Cartesian coordinates to ensure loop closure.
+* K-Nearest Neighbor Expansion: Evaluates the best $k=3$ neighbors to prevent stalling in dead ends.
+* Friction Circle Filtering: Hard-rejects control samples that violate tire lateral/longitudinal grip limits.
+
+### Core Architecture
+
+* Formula_E.py: Enforces physics, dynamics, and control input generation.
+* Track_Collisions.py: Uses shapely for rapid hitbox and track polygon collision testing.
+
+### Known Limitations
+
+* Runtime Bottleneck: Python execution speed restricts the maximum practical sample budget.
+* Tiresome Refinement: Planner struggles to produce global updates on highly constrained layouts (tracks are narrow so samples have to be very close to expand the tree).
+* Minimal Domain Awareness: Trajectories often toggle between full throttle and full brake
+
+
+
+#
+# Acknowledgments
+
+This repo uses the track geometry data from the following repository:
+
+* **[TUMFTM Racetrack Database](https://github.com/TUMFTM/racetrack-database)** by [@TU Munich](https://github.com/TUMFTM). The Racetrack Database Provided the underlying track boundaries, centerlines, and start/finish lines used in this project and is contained in the `track_info` folder. I added the Schumacher esses from the Nurburgring circuit to explore planning over a short track segment. I also added variations of IMS for other exploration.
+
+#
+# Developer Documentation 
+
 ## Track_Collisions.py
 
 Instantiate by calling `track = Track_Collisions.Track("IMS", window_size=window_size)` with an optional `angle` parameter to rotate the track. `angle` is taken care of automatically for IMS, Monza, and Silverstone. This is the object that holds the track data.
@@ -113,5 +170,5 @@ This is an implementation of the AO_RRT algorithm using the above objects. It in
 
 
 
-## dynamics_test.py
+## dynamics_test_game.py
 A simple pygame visualization of the track and dynamics. May be useful for visualizing/simulating the final paths. For now, to play the game, clone the repo and then run dynamics_test.py. You may need to install libraries used (Pygame most likely). Arrow keys to drive, up is gas, down is brake, and left and right correspond to turning. It's pretty finnicky right now, but it will get better once scaling is right and dynamics are improved.
